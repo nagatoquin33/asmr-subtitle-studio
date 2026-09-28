@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+faster-whisper>=1.1.0
+openai>=1.40
+httpx>=0.27
+yt-dlp>=2025.1.1
+# NVIDIA GPU 运行库（仅 CPU 运行可删除以下两行）
+nvidia-cublas-cu12
+nvidia-cudnn-cu12
