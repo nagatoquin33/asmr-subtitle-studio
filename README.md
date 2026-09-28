@@ -12,7 +12,11 @@
 build_exe.bat
 ```
 
-跑一次后得到 `dist\asmr-subtitle-studio\`——双击 `asmr-subtitle-studio.exe` 即可，会以**原生桌面窗口**打开（内嵌 WebView2，不再弹浏览器；窗口关闭即退出，启动出错时控制台会停留显示原因）。整个文件夹可以拷到其他 Windows 电脑直接用（无需 Python）。首次运行如遇 SmartScreen 提示点「仍要运行」。可选参数：`--browser` 强制浏览器、`--no-browser` 纯服务、`--port 8766` 换端口。
+跑一次后得到 `dist\asmr-subtitle-studio\`——双击 `asmr-subtitle-studio.exe` 即可，会以**原生桌面窗口**打开（内嵌 WebView2，不再弹浏览器；窗口关闭即退出，启动出错时控制台会停留显示原因）。
+
+> ⚠️ **迁移/拷贝时必须拷贝整个 `asmr-subtitle-studio` 文件夹**（含 `_internal`、`tools`、`.env`），只拷 exe 本体是没有 Python 运行时的，会一闪而过或毫无反应（`_internal` 里有 Python DLL 和全部依赖，exe 只是启动器）。
+
+整个文件夹可以拷到其他 Windows 电脑直接用（无需 Python）。首次运行如遇 SmartScreen 提示点「仍要运行」。可选参数：`--browser` 强制浏览器、`--no-browser` 纯服务、`--port 8766` 换端口。若双击后完全没反应，先确认没漏拷 `_internal`，再查杀毒软件隔离区（PyInstaller 程序偶被误报）。
 
 **方式二（开发/源码运行）：**
 
