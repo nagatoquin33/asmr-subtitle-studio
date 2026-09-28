@@ -145,10 +145,21 @@ cfg 即配置中 `translate` 节（可能包含额外键，需容忍）。`mock=
 ## 产物目录
 
 ```
-data/tasks/{id}/
-  task.json          任务元数据
-  media.*            上传/引用的原始媒体
-  audio.wav          ffmpeg 抽取的 16k 单声道 wav
-  segments.json      最终段数据
-  output/orig.srt, trans.srt, bilingual.srt, bilingual.ass, bilingual.vtt
+{程序所在目录}/
+  .env               LLM_API_KEY 存这里（不进 config.json、不进 git）
+  data/
+    tasks/{id}/      任务工作目录：媒体、audio.wav、segments.json、task.json
+    models/          魔搭下载的 ASR 模型
+    config.json      配置（不含 api_key）
+  output/
+    {视频名}/        每个视频的独立产物文件夹
+      orig.srt / trans.srt / bilingual.srt / bilingual.ass / bilingual.vtt / segments.json
 ```
+
+任务对象额外字段：`dir`（任务工作目录绝对路径）、`output_dir`（产物目录绝对路径，写产物后回填）。`outputs` 映射的值为绝对路径。
+
+## 密钥（.env）
+
+- `LLM_API_KEY` 存放在程序目录的 `.env` 文件；`config.json` 永不保存 key。
+- `POST /api/config` 传入非空、非 `***` 的 `translate.api_key` 时写入 `.env`；`***`/空表示保留。
+- 首次启动检测到 config.json 残留旧 key 时自动迁移到 `.env` 并清除。

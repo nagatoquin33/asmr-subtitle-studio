@@ -67,17 +67,32 @@ GPU：有 NVIDIA 显卡时自动用 CUDA（float16），需要 `nvidia-cublas-cu
 - **Mock 模式**：设置里打开后翻译走本地伪翻译，**无 API Key 也能跑通全流程**（测试/演示用）。
 - **幻觉标记**：识别结果里疑似 Whisper 幻觉（字幕组致谢、广告词等）的句子会标 ⚠，方便人工复核。
 
-## 目录结构
+## 目录与密钥
+
+程序运行后会在**程序所在目录**构建工作目录（exe 同理）：
 
 ```
-run.py              启动入口（exe 与源码共用；自动开浏览器、端口占用检测）
+程序目录/
+  .env               ← LLM API Key 存这里（LLM_API_KEY=sk-xxx），不进 git、不进 config.json
+  data/
+    tasks/{id}/      任务工作目录（下载的视频、audio.wav、segments.json）
+    models/          魔搭下载的 ASR 模型
+  output/
+    {视频名}/        每个视频一个独立产物文件夹（orig/trans/bilingual SRT、ASS、VTT、JSON）
+```
+
+- 详情页「文件位置」可一键打开产物文件夹；删除任务会连带删除它的产物文件夹。
+- API Key 在网页设置里保存后会写入 `.env`；也可手动编辑。仓库里有 `.env.example` 模板。
+
+## 目录结构（源码）
+
+```
+run.py              启动入口（exe 与源码共用；自动开窗口、端口占用检测、--port/--browser）
 backend/            FastAPI 后端（app.py 路由 / pipeline.py 管线 / tasks.py 任务与 SSE
                     / asr/ 识别与魔搭下载 / translate/ 翻译审校 / downloader.py 链接下载
                     / subtitles.py 字幕输出）
 frontend/           单页前端（零依赖、零构建、完全离线；打包时内嵌进 exe）
 build_exe.bat       PyInstaller 打包脚本 → dist/asmr-subtitle-studio/
-data/tasks/{id}/    每个任务的媒体、segments.json、output/*.srt|ass|vtt
-data/models/        魔搭下载的 ASR 模型
 tools/ffmpeg/       内置 ffmpeg（打包时会复制到 dist）
 scripts/e2e_test.py 端到端测试（对运行中的服务跑：英文样例→全流程→下载→编辑）
 docs/API.md         REST API 契约
