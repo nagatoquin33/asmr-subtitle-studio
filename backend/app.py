@@ -75,6 +75,7 @@ def health():
     ok, gpu_name = whisper_asr.gpu_available()
     return {
         "ok": True,
+        "app": "asmr-subtitle-studio",  # 供启动器识别端口上是否为本程序实例
         "version": config.APP_VERSION,
         "ffmpeg": bool(ffmpeg_utils.ffmpeg_path()),
         "ffmpeg_version": ffmpeg_utils.ffmpeg_version(),
