@@ -9,12 +9,21 @@ if not exist .venv (
 )
 call .venv\Scripts\activate.bat
 
-pip show pyinstaller >nul 2>&1 || pip install pyinstaller -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+if not exist assets\icon.ico (
+    echo [图标] 生成应用图标...
+    python scripts\make_icon.py
+)
 
-echo [1/3] PyInstaller 打包（首次约 5-10 分钟）...
-pyinstaller --noconfirm --clean ^
-  --name asmr-subtitle-studio ^
+pip show pyinstaller >nul 2>&1 || pip install pyinstaller -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+pip show pillow >nul 2>&1 || pip install pillow -q -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+echo [1/2] PyInstaller 单文件打包（约 5-15 分钟，产物约 150-250MB）...
+pyinstaller --noconfirm --clean --onefile ^
+  --name "ASMR字幕工作室" ^
+  --icon "assets\icon.ico" ^
   --add-data "frontend;frontend" ^
+  --add-binary "tools\ffmpeg\bin\ffmpeg.exe;ffmpeg_bin" ^
+  --add-binary "tools\ffmpeg\bin\ffprobe.exe;ffmpeg_bin" ^
   --collect-all faster_whisper ^
   --collect-all ctranslate2 ^
   --collect-all onnxruntime ^
@@ -33,11 +42,8 @@ if errorlevel 1 (
     pause & exit /b 1
 )
 
-echo [2/3] 复制 ffmpeg...
-robocopy tools\ffmpeg "dist\asmr-subtitle-studio\tools\ffmpeg" /E /NFL /NDL /NJH /NJS >nul
-
-echo [3/3] 完成！
-echo   程序: dist\asmr-subtitle-studio\asmr-subtitle-studio.exe
-echo   双击即可运行（整个 dist\asmr-subtitle-studio 文件夹可拷贝到其他 Windows 电脑使用）
-echo   注意: 首次运行可能触发 Windows SmartScreen 提示，点"仍要运行"即可
+echo [2/2] 完成！
+echo   产物: dist\ASMR字幕工作室.exe  （单文件，拷到任何位置/任何电脑双击即用）
+echo   说明: 首次启动需解压依赖（数秒到十几秒）；首次识别会自动从魔搭下载模型
+echo         可能触发 SmartScreen/杀软提示，属 PyInstaller 常见误报
 pause

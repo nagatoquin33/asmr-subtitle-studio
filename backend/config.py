@@ -24,7 +24,7 @@ OUTPUT_DIR = PROJECT_ROOT / "output"      # 字幕产物：output/{视频名}/
 CONFIG_PATH = DATA_DIR / "config.json"
 ENV_PATH = PROJECT_ROOT / ".env"          # LLM Key 存这里，不进 config.json、不进 git
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 DEFAULT_CONFIG: dict = {
     "asr": {

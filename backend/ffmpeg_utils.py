@@ -25,6 +25,7 @@ def _candidate_dirs():
     return [
         config.PROJECT_ROOT / "tools" / "ffmpeg" / "bin",
         config.PROJECT_ROOT / "tools" / "ffmpeg",
+        config.RESOURCE_DIR / "ffmpeg_bin",  # 单文件打包时 ffmpeg 解包位置
         config.RESOURCE_DIR / "tools" / "ffmpeg" / "bin",
         config.RESOURCE_DIR / "tools" / "ffmpeg",
     ]

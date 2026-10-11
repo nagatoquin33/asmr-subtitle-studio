@@ -6,17 +6,18 @@
 
 ## 快速开始
 
-**方式一（推荐给日常使用）：打包成 exe**
+**方式一（推荐）：单文件 exe**
 
 ```bat
 build_exe.bat
 ```
 
-跑一次后得到 `dist\asmr-subtitle-studio\`——双击 `asmr-subtitle-studio.exe` 即可，会以**原生桌面窗口**打开（内嵌 WebView2，不再弹浏览器；窗口关闭即退出，启动出错时控制台会停留显示原因）。
+产物是**一个独立的 exe**（`dist\ASMR字幕工作室.exe`，约 150-250MB，内含 Python、全部依赖、前端和 ffmpeg）——**拷到任何位置、任何 Windows 10/11 电脑，双击即用**，无需安装任何东西。数据（data/output/.env）自动生成在 exe 所在目录。
 
-> ⚠️ **迁移/拷贝时必须拷贝整个 `asmr-subtitle-studio` 文件夹**（含 `_internal`、`tools`、`.env`），只拷 exe 本体是没有 Python 运行时的，会一闪而过或毫无反应（`_internal` 里有 Python DLL 和全部依赖，exe 只是启动器）。
-
-整个文件夹可以拷到其他 Windows 电脑直接用（无需 Python）。首次运行如遇 SmartScreen 提示点「仍要运行」。可选参数：`--browser` 强制浏览器、`--no-browser` 纯服务、`--port 8766` 换端口。若双击后完全没反应，先确认没漏拷 `_internal`，再查杀毒软件隔离区（PyInstaller 程序偶被误报）。
+- 首次启动需解压依赖，等几秒到十几秒属正常；窗口关闭即退出
+- 首次识别会自动从魔搭下载所选模型；API Key 在设置里填一次（存 exe 旁的 .env）
+- SmartScreen/杀软提示为 PyInstaller 常见误报，点「仍要运行」/加白名单即可
+- 可选参数：`--browser` 强制浏览器、`--no-browser` 纯服务、`--port 8766` 换端口
 
 **方式二（开发/源码运行）：**
 
@@ -25,7 +26,7 @@ build_exe.bat
 start.bat
 ```
 
-启动后访问 **http://127.0.0.1:8765**（会自动打开浏览器）。
+启动后访问 **http://127.0.0.1:8765**（会自动打开桌面窗口/浏览器）。
 
 Git Bash / Linux 用 `./start.sh`。
 
@@ -73,10 +74,11 @@ GPU：有 NVIDIA 显卡时自动用 CUDA（float16），需要 `nvidia-cublas-cu
 
 ## 目录与密钥
 
-程序运行后会在**程序所在目录**构建工作目录（exe 同理）：
+单文件 exe 运行后会在 **exe 所在目录**构建工作目录（源码运行则在项目根目录）：
 
 ```
-程序目录/
+程序所在目录/
+  ASMR字幕工作室.exe  （单文件，随意拷贝）
   .env               ← LLM API Key 存这里（LLM_API_KEY=sk-xxx），不进 git、不进 config.json
   data/
     tasks/{id}/      任务工作目录（下载的视频、audio.wav、segments.json）
