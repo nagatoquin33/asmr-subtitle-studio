@@ -100,8 +100,12 @@ def ensure_cuda_runtime(progress_cb=None, cancel_cb=None) -> bool:
                                 raise RuntimeError("已取消")
                             f.write(chunk)
                             done["bytes"] += len(chunk)
+                            if size and done["bytes"] > size:
+                                size = 0  # HEAD 估计与实际不符时切换为不显示总量
                             if size:
                                 report(f"下载 GPU 运行库 {pkg} {done['bytes'] / 1048576:.0f}/{size / 1048576:.0f}MB")
+                            else:
+                                report(f"下载 GPU 运行库 {pkg} {done['bytes'] / 1048576:.0f}MB")
             report(f"解压 GPU 运行库 {pkg}…")
             with zipfile.ZipFile(part) as z:
                 for name in z.namelist():
