@@ -196,12 +196,12 @@ async def _stage_asr(ctx: StageContext) -> None:
     manager.update(ctx.task_id, status="asr", stage="asr", progress=0.08,
                    message=f"准备模型 {model_name}…")
 
-    # GPU 运行库按需准备：单文件包不含 CUDA DLL，检测到 N 卡时自动下载一次
+    # GPU 运行库按需准备：单文件包不含 CUDA DLL，检测到 N 卡且运行库缺失时自动下载一次
     if cfg_asr.get("device", "auto") != "cpu":
-        from .asr.cuda_runtime import dlls_ready, ensure_cuda_runtime
+        from .asr.cuda_runtime import ensure_cuda_runtime
 
         gpu_ok, gpu_name = whisper_asr.gpu_available()
-        if gpu_ok and not dlls_ready():
+        if gpu_ok and not whisper_asr.cuda_ready():
             manager.update(ctx.task_id,
                            message=f"检测到 {gpu_name}，准备 GPU 运行库（仅首次，约 1-2GB）…")
 

@@ -7,13 +7,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
 import httpx
 
-BASE = "http://127.0.0.1:8765"
+BASE = os.environ.get("ASMR_BASE", "http://127.0.0.1:8765")
 
 
 def wait_task(client: httpx.Client, tid: str, timeout: float = 600) -> dict:

@@ -62,6 +62,11 @@ def _setup_cuda_dlls() -> bool:
     return bool(dirs)
 
 
+def cuda_ready() -> bool:
+    """CUDA 推理所需的 DLL 目录是否已可注册（venv 内置或 data/cuda 已下载）。"""
+    return _setup_cuda_dlls()
+
+
 def gpu_available() -> tuple[bool, str]:
     try:
         import ctranslate2
