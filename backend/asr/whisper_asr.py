@@ -36,9 +36,16 @@ class ASRCanceled(RuntimeError):
 _CUDA_ERR_RE = re.compile(r"cublas|cudnn|cuda|CUDA", re.IGNORECASE)
 
 
-def _setup_cuda_dlls() -> None:
-    """注册 pip 安装的 NVIDIA 运行库（nvidia-cublas-cu12 / nvidia-cudnn-cu12）DLL 目录。"""
-    dirs = []
+def _setup_cuda_dlls() -> bool:
+    """注册 NVIDIA 运行库 DLL 目录；返回是否找到可用目录。
+
+    搜索顺序：data/cuda/bin（单文件包按需下载的运行库）→ pip 安装的 nvidia-* 包（源码/venv 运行）。
+    """
+    from . import cuda_runtime
+
+    dirs: list[Path] = []
+    if cuda_runtime.dlls_ready():
+        dirs.append(cuda_runtime.cuda_bin_dir())
     for p in Path(sys.executable).parent.parent.glob("Lib/site-packages/nvidia/*/bin"):
         dirs.append(p)
     if not dirs:
@@ -52,6 +59,7 @@ def _setup_cuda_dlls() -> None:
             pass
     if dirs:
         log.info("已注册 %d 个 NVIDIA DLL 目录", len(dirs))
+    return bool(dirs)
 
 
 def gpu_available() -> tuple[bool, str]:

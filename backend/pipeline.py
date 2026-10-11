@@ -143,6 +143,28 @@ async def run_task(task_id: str) -> None:
             manager.update(task_id, status="asr", stage="asr", progress=0.05,
                            message=f"准备模型 {model_name}…")
 
+            # GPU 运行库按需准备：单文件包不含 CUDA DLL，检测到 N 卡时自动下载一次
+            if cfg["asr"].get("device", "auto") != "cpu":
+                from .asr.cuda_runtime import dlls_ready, ensure_cuda_runtime
+
+                gpu_ok, gpu_name = whisper_asr.gpu_available()
+                if gpu_ok and not dlls_ready():
+                    manager.update(task_id,
+                                   message=f"检测到 {gpu_name}，准备 GPU 运行库（仅首次，约 1-2GB）…")
+
+                    def cuda_progress(msg: str):
+                        manager.update(task_id, message=msg)
+
+                    try:
+                        if await asyncio.to_thread(
+                            ensure_cuda_runtime, cuda_progress,
+                            lambda: manager.is_cancelled(task_id),
+                        ):
+                            manager.update(task_id, message=f"GPU 运行库就绪（{gpu_name}）")
+                    except Exception as e:
+                        log.warning("CUDA 运行库获取失败，将用 CPU: %s", e)
+                        manager.update(task_id, message=f"GPU 运行库获取失败（{str(e)[:80]}），使用 CPU")
+
             def asr_progress(frac: float):
                 manager.update(task_id, progress=0.05 + frac * 0.55,
                                message=f"识别中 {_fmt_clock(frac * duration)} / {_fmt_clock(duration)}",
