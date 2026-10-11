@@ -2,6 +2,50 @@
 
 仅记录超出 `docs/API.md` 字面契约的假设与实现决策。文件：`index.html` / `style.css` / `api.js` / `app.js`。
 
+## 2026-10 「深夜录音棚 / 深夜广播」重设计
+
+> 功能逻辑零改动：全部 element ID、JS 类名钩子、事件逻辑保持兼容；style.css 全量重写；index.html 仅调整装饰性结构；app.js / api.js 仅做下述增量小改。
+
+### 设计令牌（style.css `:root`）
+
+1. **色彩**：夜色基底 `#0b0d12 → #10141c → #090b10` 线性渐层 + 左上琥珀 / 右上冷青两处极低饱和氛围光（radial ≤7% 透明度）。双强调色 **暖琥珀 `#f5b56b`**（主按钮、进度条、focus 环、选中卡、进行态）× **冷青 `#67e8f9`**（完成/信息态、健康灯 ok、链接、百分比、chip 边框），替换原紫色系；红色仅用于错误，绿色并入青色（success = 完成 = 青）。
+2. **状态色重调（10 态）**：queued `#97a1b6` / downloading `#64a9f2` / extracting `#7dd3fc` / asr `#f5b56b`（核心暖段）/ translating `#5eead4` / proofreading `#f8cd5e` / writing `#f2a8bd` / done `#67e8f9` / error `#f87171` / canceled `#7c8595`——冷蓝技术段 → 琥珀识别段 → 青完成段的「管线旅程」映射。
+3. **字体（全离线）**：标题/数字 `"Bahnschrift", "Segoe UI Variable Display"`（DIN 风格，Win10/11 自带，`letter-spacing 2~3px` 营造设备铭牌感）；正文 `"Segoe UI", "Microsoft YaHei"`；时间码/技术值 `ui-monospace, "Cascadia Code"`。
+4. **布局**：左栏 340px（原 360px）、顶栏 52px（原 56px）、右栏卡片 padding 16-20px、详情 section 间距 16px；详情各 section 统一 `.sec-head`（小字距标签 + 渐隐细线）。
+5. **噪点**：内联 SVG `feTurbulence`（fractalNoise + 去饱和）data-URI 平铺 180px，`body::after` 全屏 opacity 0.03，`pointer-events:none`、z-index 9999（覆盖含弹窗的一切表面，胶片颗粒统一）。
+6. **动效（ASMR 式的慢）**：全局过渡 200/320/400ms `cubic-bezier(.22,.61,.36,1)` ease-out；进度条流光 3.2s；状态点/健康灯/运行中卡片左缘条统一 2.4s 呼吸（opacity，非 scale 抖动）；顶栏底部 1px 呼吸光晕线 7s；任务卡载入 `cardIn` 420ms + 60ms 间隔 staggered（nth-child 1~10）；页面载入骨架 shimmer 1.8s；`@media (prefers-reduced-motion: reduce)` 全部关停。
+
+### 视觉实现要点
+
+- **上传卡**：虚线大框 → 内部层次卡片（顶部琥珀辉光 + 圆形耳机 SVG 图标带柔光、Bahnschrift 标语「丢进来，或是粘贴一个链接」）；拖拽悬停边框流光 = `mask-composite: exclude` 描边环 + 110° 扫光（2.2s loop，200ms 淡入）；两个折叠面板（链接下载 / 本地路径）字号 12px、faint 色、次级弱化，并调换顺序让「链接下载」更靠前。
+- **任务卡**：更扁更密（10-11px padding、8px 间距）；状态徽章去药丸底色 → 极简圆点+文字；进度条 3px；运行中卡片左缘 2px 呼吸色条用 **纯 CSS `:has(.st-*)`** 驱动（JS 零改动；不支持 `:has` 的旧浏览器仅丢失该装饰）。
+- **详情页**：标题 Bahnschrift 17px；导出 6 格改为胶囊分段样式（`width:max-content` + 分隔线 + overflow-x 滚动兜底）；字幕表表头 10.5px/1.8px 字距、行 hover 提亮、时间码 `rgba(125,205,220,.78)` 青灰、译文输入无边框 + focus 底部琥珀线（dirty 虚线琥珀 / saved 青）。
+- **设置弹窗**：`fieldset/legend` → `section + .cfg-legend`（琥珀小竖标 + 小型大写字 + 细线）；输入框 8px 圆角 + focus 琥珀环；三个 checkbox 重绘为纯 CSS pill switch（`appearance:none` + radial-gradient 圆点 + `background-position` 平移，选中态琥珀）。
+- **空状态**：emoji 替换为纯 CSS waveform（21 根条，nth-child 有机高度 + 错峰 4.2s 极缓明暗呼吸）；任务队列为琥珀渐变、详情空态为冷青变体。
+
+### app.js / api.js 增量小改（功能兼容）
+
+1. **任务卡相对时间**：新增 `parseLocalDate()` / `relTime()`（本地时区解析，「刚刚 / N 分钟前 / N 小时前 / N 天前」，>30 天回退 `MM-DD HH:mm`）；`updateCardDOM` 的 meta 行改显相对时间，`c.meta.title` = 绝对时间（hover 显示）。3s 轮询会持续刷新相对时间。
+2. **骨架屏**：新增 `showListSkeleton()` / `clearListSkeleton()` / `showSegSkeleton()`；`init` 在首次 `loadTasks` 前渲染 4 张列表骨架卡，首次响应（成功或失败）即撤除；`state.bootstrapped` 期间 `updateListChrome` 不显示空状态；`refreshSegments` 用 8 行字幕表骨架替代「字幕加载中…」文案，失败时清空骨架并回退错误文案。
+3. **顶部模型名 chip**：新增 `#modelChip`（HTML 新增元素）+ `refreshModelChip()`（`GET /api/config` 读 `asr.model`，静默失败），`init` 与 `saveSettings` 成功后各刷新一次。
+4. **api.js**：`getConfig` 增加 `silent = false` 可选参数（默认行为不变），供模型 chip 后台静默读取，避免后端离线时启动弹 toast。
+
+### HTML 结构调整（ID / 钩子全部保留）
+
+- 新增：`#modelChip`、`.waveform`（空态装饰）、`.sec-rule`/`.cfg-rule`（细分线）、`.cfg-legend`。`fieldset/legend` 改为 `section/div`（无 JS 引用）。
+- 删除：`.es-emoji/.es-glow/.de-emoji/.de-glow`（由 CSS `::before` 辉光与 waveform 取代）。
+- 保持不变：全部 68+ 原有 element ID、`accept` 属性、表单 option 值、`aria-*`、`details/summary` 结构（JS 依赖 `.open`）、dropzone/fileInput/exportRow/segBody 等钩子。
+- `.badge-text` 无专属 CSS 规则：与原版一致，颜色/字号由 `.badge` 继承。
+
+### 重设计后自检结果
+
+- `node --check app.js` / `api.js`：通过。
+- `python -m http.server 8932`：index.html / style.css / app.js / api.js 均 HTTP 200（已验证后关闭并确认端口释放）。
+- ID 交叉核对（python 脚本）：app.js `$id()` 引用 81 个 id，全部存在于 index.html（缺失列表为空；其中 1 个为本次新增的 `modelChip`）。
+- JS 生成类名 → CSS 覆盖核对：81 个类名全部有样式（badge-text 经 `.badge` 继承）。
+- 外链资源检查：HTML 无 `http(s)://` 引用，CSS `url()` 全部为 data-URI，零外部资源。
+- 浏览器渲染冒烟测试因当前环境无浏览器能力而跳过。
+
 ## API 假设
 
 1. **`has_api_key` 的位置**：契约写「另带 has_api_key」但未明说层级。前端按 `cfg.has_api_key`（顶层）读取，并兜底 `cfg.translate.has_api_key`（POST 返回值同理）。

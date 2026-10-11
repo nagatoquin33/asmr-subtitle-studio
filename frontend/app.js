@@ -54,6 +54,7 @@ const state = {
   segPage: 1,
   hasApiKey: false,
   uploadBusy: false,
+  bootstrapped: false,     // 首次任务列表加载是否完成（期间展示骨架屏）
 };
 
 const sse = new Map();     // id -> EventSource
@@ -110,6 +111,27 @@ function fmtTC(sec) {
 function fmtDT(iso) {
   const m = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(String(iso || ''));
   return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : '';
+}
+
+/** ISO "2026-09-28T15:30:00" → Date（按本地时区解析，避免 UTC 偏移） */
+function parseLocalDate(iso) {
+  const m = /(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})/.exec(String(iso || ''));
+  return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]) : null;
+}
+
+/** 相对时间："刚刚 / 3 分钟前 / 5 小时前 / 2 天前"；超过 30 天回退 "09-28 15:30" */
+function relTime(iso) {
+  const d = parseLocalDate(iso);
+  if (!d) return '';
+  const diff = Date.now() - d.getTime();
+  if (diff < 45e3) return '刚刚';
+  const min = Math.floor(diff / 6e4);
+  if (min < 60) return `${min} 分钟前`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} 小时前`;
+  const day = Math.floor(h / 24);
+  if (day < 30) return `${day} 天前`;
+  return fmtDT(iso);
 }
 
 function isActive(t) { return !!t && ACTIVE_STATUSES.has(t.status); }
@@ -180,6 +202,21 @@ async function refreshHealth() {
     text.textContent = '后端未连接';
     wrap.title = '无法连接后端（FastAPI @ http://127.0.0.1:8765）';
   }
+}
+
+/** 顶部状态胶囊旁的当前默认 ASR 模型名（读 /api/config，静默失败） */
+async function refreshModelChip() {
+  const el = $id('modelChip');
+  if (!el) return;
+  try {
+    const cfg = await API.getConfig(true);
+    const m = cfg && cfg.asr && cfg.asr.model ? String(cfg.asr.model) : '';
+    if (m) {
+      el.hidden = false;
+      el.textContent = m;
+      el.title = `当前默认 ASR 模型：${m}`;
+    }
+  } catch (_) { /* 静默：后端离线时由健康灯呈现 */ }
 }
 
 /* ---------------- 任务列表：卡片 ---------------- */
@@ -261,8 +298,9 @@ function updateCardDOM(t) {
   if (t.counts && t.counts.segments != null) bits.push(`${t.counts.segments} 段`);
   if (t.counts && t.counts.translated != null) bits.push(`已译 ${t.counts.translated}`);
   const dt = fmtDT(t.created_at);
-  if (dt) bits.push(dt);
+  if (dt) bits.push(relTime(t.created_at)); // 卡片上显示相对时间
   c.meta.textContent = bits.join(' · ');
+  c.meta.title = dt ? `创建于 ${dt}` : '';  // hover 显示绝对时间
 
   c.root.classList.toggle('selected', t.id === state.selectedId);
   // 状态驱动的卡片着色（CSS: .tcst-*）
@@ -285,7 +323,8 @@ function sortTaskList() {
 
 function updateListChrome() {
   $id('taskCount').textContent = String(state.tasks.size);
-  $id('emptyState').hidden = state.tasks.size > 0;
+  // 首次加载完成前不显示空状态（此时是骨架屏）
+  $id('emptyState').hidden = !state.bootstrapped || state.tasks.size > 0;
 }
 
 function removeTaskLocal(id) {
@@ -302,6 +341,51 @@ function removeTaskLocal(id) {
     document.body.classList.remove('detail-open');
   }
   updateListChrome();
+}
+
+/* ---------------- 骨架屏 ---------------- */
+/** 任务列表骨架：仅在首次加载（bootstrapped 之前）展示 */
+function showListSkeleton(n = 4) {
+  const list = $id('taskList');
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < n; i++) {
+    const d = document.createElement('div');
+    d.className = 'task-card sk-card';
+    d.setAttribute('aria-hidden', 'true');
+    d.innerHTML = [
+      '<div class="sk-row"><span class="sk-line" style="width:56%"></span><span class="sk-line sk-chip"></span></div>',
+      '<span class="sk-line" style="width:88%"></span>',
+      '<span class="sk-line" style="width:38%"></span>',
+    ].join('');
+    frag.appendChild(d);
+  }
+  list.appendChild(frag);
+}
+
+function clearListSkeleton() {
+  const list = $id('taskList');
+  for (const el of [...list.children]) {
+    if (el.classList && el.classList.contains('sk-card')) el.remove();
+  }
+}
+
+/** 字幕表骨架：详情字幕加载期间替代「字幕加载中…」文案 */
+function showSegSkeleton(rows = 8) {
+  const body = $id('segBody');
+  body.textContent = '';
+  $id('segEmpty').hidden = true;
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < rows; i++) {
+    const tr = document.createElement('tr');
+    tr.className = 'sk-row';
+    tr.setAttribute('aria-hidden', 'true');
+    tr.innerHTML =
+      `<td class="col-tc"><span class="sk-line" style="width:92%"></span></td>` +
+      `<td class="col-orig"><span class="sk-line" style="width:${58 + (i % 3) * 12}%"></span></td>` +
+      `<td class="col-trans"><span class="sk-line" style="width:${44 + (i % 4) * 10}%"></span></td>`;
+    frag.appendChild(tr);
+  }
+  body.appendChild(frag);
 }
 
 /* ---------------- 任务数据流 ---------------- */
@@ -333,9 +417,19 @@ async function loadTasks() {
   try {
     data = await API.listTasks(100);
   } catch (_) {
-    return; // 静默：网络错误由健康灯反映
+    // 静默：网络错误由健康灯反映；首次加载失败时撤掉骨架屏、交给空状态+健康灯说明
+    if (!state.bootstrapped) {
+      state.bootstrapped = true;
+      clearListSkeleton();
+      updateListChrome();
+    }
+    return;
   }
   const list = (data && data.tasks) || [];
+  if (!state.bootstrapped) {
+    state.bootstrapped = true;
+    clearListSkeleton();
+  }
   for (const t of list) upsertTask(t);
   // 服务端已不存在的任务（limit 内全量返回时才做清理，避免误删 100 条之外的缓存）
   if (list.length < 100) {
@@ -565,9 +659,8 @@ async function refreshSegments(force = false) {
   if (state.segmentsLoading || (!force && state.segmentsFor === id)) return;
 
   state.segmentsLoading = true;
+  showSegSkeleton(); // 加载期间展示字幕表骨架
   const empty = $id('segEmpty');
-  empty.hidden = false;
-  empty.textContent = '字幕加载中…';
   try {
     const full = await API.getTask(id, true);
     if (state.selectedId !== id) return; // 期间用户已切换任务
@@ -577,6 +670,7 @@ async function refreshSegments(force = false) {
     renderSegments();
   } catch (_) {
     if (state.selectedId === id) {
+      $id('segBody').textContent = '';
       empty.hidden = false;
       empty.textContent = '字幕加载失败，可点击「刷新」重试';
     }
@@ -1162,6 +1256,7 @@ async function saveSettings() {
     $id('cfgApiKey').value = '';
     $id('cfgApiKey').placeholder = state.hasApiKey ? '已保存则留空或 ***' : 'sk-…';
     toast('设置已保存', 'success');
+    refreshModelChip(); // 默认模型可能已变，同步顶部 chip
   } catch (_) {
     // toast 已由封装弹出
   } finally {
@@ -1369,7 +1464,9 @@ function init() {
   setupSegmentsUI();
   setupSettings();
 
+  showListSkeleton();  // 首次任务列表加载前展示骨架
   refreshHealth();
+  refreshModelChip();
   loadTasks();
   setInterval(() => { loadTasks(); }, POLL_MS);
   setInterval(() => { refreshHealth(); }, HEALTH_MS);

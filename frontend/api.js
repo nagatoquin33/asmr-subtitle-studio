@@ -61,7 +61,8 @@ const API = {
   health: () => apiFetch('/api/health', { silent: true }),
 
   /* ---- 配置 ---- */
-  getConfig: () => apiFetch('/api/config'),
+  // silent=true 供顶部模型名 chip 等后台读取使用（失败不打扰用户）；表单加载保持默认弹错
+  getConfig: (silent = false) => apiFetch('/api/config', { silent }),
   saveConfig: (cfg) => apiFetch('/api/config', { method: 'POST', body: cfg }),
 
   /* ---- 翻译连通性测试 ---- */

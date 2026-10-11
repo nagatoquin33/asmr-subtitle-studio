@@ -3,8 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0b0d12">
   <title>ASMR 字幕工作室</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%237c5cff' d='M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5.1A7 7 0 0 1 12 5a7 7 0 0 1 6.9 6H17a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23f5b56b' d='M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5.1A7 7 0 0 1 12 5a7 7 0 0 1 6.9 6H17a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z'/></svg>">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -15,8 +17,8 @@
       <svg class="brand-logo" viewBox="0 0 24 24" aria-hidden="true">
         <defs>
           <linearGradient id="lg-brand" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stop-color="#7c5cff"/>
-            <stop offset="1" stop-color="#22d3ee"/>
+            <stop offset="0" stop-color="#f5b56b"/>
+            <stop offset="1" stop-color="#67e8f9"/>
           </linearGradient>
         </defs>
         <path fill="url(#lg-brand)" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5.1A7 7 0 0 1 12 5a7 7 0 0 1 6.9 6H17a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/>
@@ -25,6 +27,7 @@
       <span class="brand-sub">本地全流程 · 识别 → 翻译 → 审校 → 双语字幕</span>
     </div>
     <div class="topbar-right">
+      <span id="modelChip" class="model-chip mono" hidden></span>
       <div id="health" class="health" title="正在检查后端状态…">
         <span class="h-dot" id="healthDot"></span>
         <span id="healthText">连接中…</span>
@@ -43,9 +46,15 @@
     <section id="leftPane" class="pane">
       <div class="card upload-card">
         <div id="dropzone" class="dropzone" tabindex="0" role="button" aria-label="点击选择或拖入音视频文件">
-          <div class="dz-icon" aria-hidden="true">🎧</div>
-          <div class="dz-title">拖入音视频文件</div>
-          <div class="dz-hint">或点击选择 · 支持多文件 · mp3 / wav / mp4 / mkv …</div>
+          <div class="dz-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 14v-2a8 8 0 0 1 16 0v2"/>
+              <rect x="3" y="14" width="4.5" height="6.5" rx="2"/>
+              <rect x="16.5" y="14" width="4.5" height="6.5" rx="2"/>
+            </svg>
+          </div>
+          <div class="dz-title">丢进来，或是粘贴一个链接</div>
+          <div class="dz-hint">点击选择文件 · 支持多文件 · mp3 / wav / mp4 / mkv …</div>
         </div>
         <input type="file" id="fileInput" multiple hidden
                accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.oga,.opus,.wma,.aiff,.aif,.ape,.mp4,.mkv,.mov,.avi,.webm,.flv,.ts,.m4v,.wmv,.mpg,.mpeg,.3gp">
@@ -71,20 +80,20 @@
           <div class="up-label"><span id="uploadLabel">正在上传…</span><span id="uploadPct" class="mono">0%</span></div>
           <div class="bar"><div class="bar-fill" id="uploadBarFill" style="width:0%"></div></div>
         </div>
-        <details class="local-path" id="localPathBox">
-          <summary>本地路径添加（无需上传）</summary>
-          <div class="lp-body">
-            <textarea id="localPaths" rows="4" spellcheck="false"
-                      placeholder="每行一个本地路径，例如：&#10;D:\media\asmr\vol.01.mp4&#10;E:\audio\night.wav"></textarea>
-            <button type="button" class="btn btn-primary btn-block" id="btnAddLocal">添加到队列</button>
-          </div>
-        </details>
         <details class="local-path" id="urlDownloadBox">
           <summary>🔗 链接下载（bilibili / YouTube 等）</summary>
           <div class="lp-body">
             <textarea id="downloadUrls" rows="4" spellcheck="false"
                       placeholder="每行一个视频页链接，例如：&#10;https://www.bilibili.com/video/BV…&#10;https://www.youtube.com/watch?v=…&#10;支持 bilibili、YouTube 及其它 yt-dlp 支持的平台"></textarea>
             <button type="button" class="btn btn-primary btn-block" id="btnAddUrls">解析并添加</button>
+          </div>
+        </details>
+        <details class="local-path" id="localPathBox">
+          <summary>本地路径添加（无需上传）</summary>
+          <div class="lp-body">
+            <textarea id="localPaths" rows="4" spellcheck="false"
+                      placeholder="每行一个本地路径，例如：&#10;D:\media\asmr\vol.01.mp4&#10;E:\audio\night.wav"></textarea>
+            <button type="button" class="btn btn-primary btn-block" id="btnAddLocal">添加到队列</button>
           </div>
         </details>
       </div>
@@ -95,19 +104,23 @@
       </div>
       <div id="taskList" class="task-list" role="list"></div>
 
-      <div id="emptyState" class="empty-state">
-        <div class="es-glow" aria-hidden="true"></div>
-        <div class="es-emoji" aria-hidden="true">🌙</div>
+      <div id="emptyState" class="empty-state" hidden>
+        <div class="waveform" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
         <div class="es-title">队列为空</div>
-        <div class="es-hint">把音视频拖进上方区域，<br>开始制作双语字幕</div>
+        <div class="es-hint">把音视频拖进上方区域，<br>让今晚的声音留下字幕</div>
       </div>
     </section>
 
     <!-- 右栏：详情 -->
     <section id="detailPane" class="pane">
       <div id="detailEmpty" class="detail-empty">
-        <div class="de-glow" aria-hidden="true"></div>
-        <div class="de-emoji" aria-hidden="true">🎬</div>
+        <div class="waveform waveform-cyan" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </div>
         <div class="de-title">选择一个任务</div>
         <div class="de-hint">点击左侧任务卡片，查看详情、预览媒体与编辑字幕</div>
       </div>
@@ -147,14 +160,20 @@
 
         <!-- 媒体预览 -->
         <div class="card detail-media-wrap">
-          <div class="sec-title">媒体预览</div>
+          <div class="sec-head">
+            <span class="sec-title">媒体预览</span>
+            <i class="sec-rule" aria-hidden="true"></i>
+          </div>
           <div id="mediaSlot" class="media-slot"></div>
           <div class="media-tip">提示：点击播放器右下角 CC 可开关双语字幕轨</div>
         </div>
 
         <!-- 导出 -->
         <div class="card detail-exports">
-          <div class="sec-title">导出字幕</div>
+          <div class="sec-head">
+            <span class="sec-title">导出字幕</span>
+            <i class="sec-rule" aria-hidden="true"></i>
+          </div>
           <div id="exportRow" class="export-row">
             <a class="btn btn-ghost btn-sm" data-type="orig_srt" download>原文 SRT</a>
             <a class="btn btn-ghost btn-sm" data-type="trans_srt" download>译文 SRT</a>
@@ -168,7 +187,8 @@
         <!-- 字幕编辑 -->
         <div class="card detail-segments">
           <div class="sec-head">
-            <div class="sec-title">字幕编辑 <span id="segSummary" class="sec-sub mono"></span></div>
+            <span class="sec-title">字幕编辑 <span id="segSummary" class="sec-sub mono"></span></span>
+            <i class="sec-rule" aria-hidden="true"></i>
             <div class="pager" id="segPager">
               <button type="button" class="btn btn-ghost btn-sm" id="btnPageFirst" title="第一页">«</button>
               <button type="button" class="btn btn-ghost btn-sm" id="btnPagePrev" title="上一页">‹</button>
@@ -204,8 +224,8 @@
       </div>
       <div class="modal-body">
 
-        <fieldset class="cfg-group">
-          <legend>语音识别</legend>
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>语音识别</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="cfg-grid">
             <label class="cfg-field span-3">模型
               <select id="cfgModel">
@@ -230,10 +250,10 @@
               </select>
             </label>
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset class="cfg-group">
-          <legend>翻译 API</legend>
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>翻译 API</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="cfg-grid">
             <label class="cfg-field span-3">Base URL
               <input id="cfgBaseUrl" type="text" placeholder="https://api.deepseek.com/v1" spellcheck="false">
@@ -271,10 +291,10 @@
             <button type="button" class="btn btn-ghost btn-sm" id="btnTestTranslate">测试翻译连接</button>
             <div id="testResult" class="test-result" hidden></div>
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset class="cfg-group">
-          <legend>输出</legend>
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>输出</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="cfg-grid">
             <label class="cfg-check">
               <input id="cfgBilingual" type="checkbox">
@@ -290,10 +310,10 @@
               <input id="cfgMaxLineChars" type="number" min="10" max="100" step="1">
             </label>
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset class="cfg-group">
-          <legend>下载</legend>
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>下载</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="cfg-grid">
             <label class="cfg-field">最大分辨率（高）
               <input id="cfgDownloadHeight" type="number" min="144" max="2160" step="40" placeholder="720">
@@ -305,10 +325,10 @@
               <input id="cfgDownloadCookies" type="text" placeholder="可选：chrome / edge / firefox" spellcheck="false">
             </label>
           </div>
-        </fieldset>
+        </section>
 
-        <fieldset class="cfg-group">
-          <legend>ASR 模型下载</legend>
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>ASR 模型下载</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="models-head">
             <span class="cfg-note">模型从魔搭（ModelScope）下载到本地 data/models/，下载完成后即可用于识别</span>
             <button type="button" class="btn btn-ghost btn-sm" id="btnModelsRefresh">刷新</button>
@@ -316,7 +336,7 @@
           <div id="modelsList" class="models-list">
             <div class="models-loading">加载中…</div>
           </div>
-        </fieldset>
+        </section>
       </div>
       <div class="modal-foot">
         <span class="cfg-note" id="cfgKeyState"></span>
