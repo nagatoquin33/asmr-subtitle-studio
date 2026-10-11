@@ -38,16 +38,16 @@ def _is_our_app(port: int) -> bool:
         return False
 
 
-def _pick_port() -> tuple[int, bool]:
+def _pick_port(base_port: int) -> tuple[int, bool]:
     """返回 (port, attach)。attach=True 表示该端口已有本程序实例。"""
-    if not _port_busy(PORT):
-        return PORT, False
-    if _is_our_app(PORT):
-        return PORT, True
-    for p in range(PORT + 1, PORT + 20):
+    if not _port_busy(base_port):
+        return base_port, False
+    if _is_our_app(base_port):
+        return base_port, True
+    for p in range(base_port + 1, base_port + 20):
         if not _port_busy(p):
             return p, False
-    return PORT, False
+    return base_port, False
 
 
 def _open_browser(url: str, delay: float = 0.8) -> None:
@@ -133,7 +133,7 @@ def _main() -> None:
             except ValueError:
                 pass
 
-    port, attach = _pick_port()
+    port, attach = _pick_port(port)
     url = f"http://127.0.0.1:{port}"
 
     if attach:
