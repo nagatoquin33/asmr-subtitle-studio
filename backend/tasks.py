@@ -1,4 +1,8 @@
-"""任务管理器：注册表、持久化、SSE 订阅、工作队列。"""
+"""任务管理器：注册表、持久化（节流）、事件发布、工作目录生命周期。
+
+状态变更 → TaskManager.update() → ① EventBus（SSE 等传输层消费，必达、内存内）
+                                → ② task.json 落盘（节流：纯进度类更新最多 2s 一次）
+"""
 from __future__ import annotations
 
 import asyncio
@@ -13,11 +17,19 @@ import uuid
 from pathlib import Path
 
 from . import config
+from .events import EventBus
 
 log = logging.getLogger(__name__)
 
 RUNNING_STAGES = {"queued", "downloading", "extracting", "asr", "translating", "proofreading", "writing"}
 FINAL_STAGES = {"done", "error", "canceled"}
+
+# 这些字段的变更必须立刻落盘（其余视为高频进度类，节流处理）
+PERSIST_ALWAYS_FIELDS = {
+    "status", "stage", "error", "counts", "outputs", "media", "options",
+    "asr", "has_result", "name", "dir", "output_dir", "cancel",
+}
+PERSIST_MIN_INTERVAL = 2.0  # 秒
 
 
 def sanitize_filename(name: str) -> str:
@@ -33,9 +45,10 @@ def new_task_id() -> str:
 class TaskManager:
     def __init__(self) -> None:
         self.tasks: dict[str, dict] = {}
-        self.subs: dict[str, set] = {}
+        self.bus = EventBus()
         self.loop: asyncio.AbstractEventLoop | None = None
         self._lock = threading.Lock()
+        self._last_persist: dict[str, float] = {}
         self._load_existing()
 
     # ---------- 持久化 ----------
@@ -64,6 +77,7 @@ class TaskManager:
         tmp = d / "task.json.tmp"
         tmp.write_text(json.dumps(task, ensure_ascii=False, indent=1), encoding="utf-8")
         tmp.replace(d / "task.json")
+        self._last_persist[task_id] = time.monotonic()
 
     # ---------- 创建/查询 ----------
     def create(self, src: Path, options: dict, copy_into_task: bool) -> dict:
@@ -105,7 +119,8 @@ class TaskManager:
     def create_url_task(self, url: str, options: dict) -> dict:
         """URL 下载任务：媒体路径在下载完成后回填。"""
         tid = new_task_id()
-        (config.TASKS_DIR / tid).mkdir(parents=True, exist_ok=True)
+        d = config.TASKS_DIR / tid
+        d.mkdir(parents=True, exist_ok=True)
         now = time.strftime("%Y-%m-%dT%H:%M:%S")
         task = {
             "id": tid,
@@ -118,7 +133,7 @@ class TaskManager:
             "cancel": False,
             "created_at": now,
             "updated_at": now,
-            "dir": str(config.TASKS_DIR / tid),
+            "dir": str(d),
             "media": {"path": None, "duration": None, "size": None, "has_video": None},
             "source_url": url,
             "asr": {},
@@ -145,13 +160,25 @@ class TaskManager:
         return [copy.deepcopy(t) for t in out]
 
     # ---------- 状态更新（可从任意线程调用） ----------
-    def update(self, task_id: str, event: bool = True, **fields) -> dict | None:
+    def update(self, task_id: str, event: bool = True, persist: bool | None = None, **fields) -> dict | None:
+        """更新任务并广播。
+
+        persist: True=强制落盘；False=跳过落盘；None=自动
+        （含 PERSIST_ALWAYS_FIELDS 字段变化时立即落盘，否则纯进度类更新最多 PERSIST_MIN_INTERVAL 秒一次）
+        """
         task = self.tasks.get(task_id)
         if not task:
             return None
         task.update(fields)
         task["updated_at"] = time.strftime("%Y-%m-%dT%H:%M:%S")
-        self.persist(task_id)
+
+        if persist is None:
+            persist = bool(PERSIST_ALWAYS_FIELDS & fields.keys())
+            if not persist:
+                last = self._last_persist.get(task_id, 0.0)
+                persist = (time.monotonic() - last) >= PERSIST_MIN_INTERVAL
+        if persist:
+            self.persist(task_id)
         if event:
             self._publish(task_id, task)
         return copy.deepcopy(task)
@@ -181,7 +208,7 @@ class TaskManager:
             t["cancel"] = True
         with self._lock:
             self.tasks.pop(task_id, None)
-            self.subs.pop(task_id, None)
+            self._last_persist.pop(task_id, None)
         shutil.rmtree(config.TASKS_DIR / task_id, ignore_errors=True)
         # 该任务的产物目录（output/{视频名}/）一并删除
         if t.get("output_dir"):
@@ -190,45 +217,28 @@ class TaskManager:
                 shutil.rmtree(out, ignore_errors=True)
         return True
 
-    # ---------- SSE ----------
+    # ---------- 事件 ----------
     def set_loop(self, loop: asyncio.AbstractEventLoop) -> None:
         self.loop = loop
+        self.bus.set_loop(loop)
 
     def _publish(self, task_id: str, task: dict) -> None:
-        subs = self.subs.get(task_id)
-        if not subs:
-            return
-        event = {"type": "progress", "task": copy.deepcopy(task)}
-        try:
-            running = asyncio.get_running_loop()
-        except RuntimeError:
-            running = None
-        if running and running is self.loop:
-            for q in list(subs):
-                q.put_nowait(event)
-        elif self.loop:
-            for q in list(subs):
-                self.loop.call_soon_threadsafe(q.put_nowait, event)
+        self.bus.publish(task_id, {"type": "progress", "task": copy.deepcopy(task)})
 
     async def subscribe(self, task_id: str):
-        q: asyncio.Queue = asyncio.Queue(maxsize=64)
-        self.subs.setdefault(task_id, set()).add(q)
+        """SSE 订阅：async 生成器，退出时自动退订。"""
+        q = self.bus.subscribe(task_id)
         try:
             yield q
         finally:
-            self.subs.get(task_id, set()).discard(q)
-            if not self.subs.get(task_id):
-                self.subs.pop(task_id, None)
+            self.bus.unsubscribe(task_id, q)
 
     def emit_final(self, task_id: str) -> None:
         task = self.tasks.get(task_id)
-        if task:
-            etype = {"done": "done", "error": "error", "canceled": "canceled"}.get(task["status"], "progress")
-            event = {"type": etype, "task": copy.deepcopy(task)}
-            subs = self.subs.get(task_id) or set()
-            if self.loop:
-                for q in list(subs):
-                    self.loop.call_soon_threadsafe(q.put_nowait, event)
+        if not task:
+            return
+        etype = {"done": "done", "error": "error", "canceled": "canceled"}.get(task["status"], "progress")
+        self.bus.publish(task_id, {"type": etype, "task": copy.deepcopy(task)})
 
 
 manager = TaskManager()

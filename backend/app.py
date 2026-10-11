@@ -1,13 +1,14 @@
-"""FastAPI 主应用：REST API + SSE + 静态托管。"""
+"""FastAPI 主应用：HTTP 路由层（参数校验 + 委托 services），含 SSE 与媒体流传输。
+
+业务规则在 services.py / pipeline.py / tasks.py；本文件不包含业务判断。
+"""
 from __future__ import annotations
 
 import asyncio
-import copy
 import json
 import logging
 import mimetypes
 import re
-import subprocess
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
@@ -15,9 +16,10 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import config, ffmpeg_utils, pipeline, subtitles
+from . import config, ffmpeg_utils, queueing, services, subtitles
 from .asr import modelscope_dl, whisper_asr
-from .tasks import RUNNING_STAGES, manager, sanitize_filename
+from .pipeline import retranslate_segment, update_segment_text
+from .tasks import manager
 
 logging.basicConfig(
     level=logging.INFO,
@@ -27,46 +29,23 @@ log = logging.getLogger(__name__)
 
 app = FastAPI(title="ASMR 字幕工作室", version=config.APP_VERSION)
 
-_queue: asyncio.Queue | None = None
+
+def _svc_error(e: services.ServiceError) -> HTTPException:
+    return HTTPException(e.code, str(e))
 
 
 @app.on_event("startup")
 async def startup() -> None:
-    global _queue
     config.ensure_dirs()
     manager.set_loop(asyncio.get_running_loop())
-    _queue = asyncio.Queue()
-
-    async def worker():
-        while True:
-            tid = await _queue.get()
-            try:
-                await pipeline.run_task(tid)
-            except Exception:
-                log.exception("worker 处理任务 %s 异常", tid)
-            finally:
-                _queue.task_done()
-
-    workers = max(1, int(config.get_config().get("pipeline", {}).get("workers", 1)))
-    for _ in range(workers):
-        asyncio.create_task(worker())
-
-    # 重启后恢复排队的任务
-    for t in manager.list(limit=1000):
-        if t["status"] == "queued":
-            _queue.put_nowait(t["id"])
+    queueing.task_queue.start()
 
 
-def _get_or_404(task_id: str) -> dict:
+def _task_or_404(task_id: str) -> dict:
     t = manager.get(task_id)
     if not t:
         raise HTTPException(404, "任务不存在")
     return t
-
-
-def _enqueue(task_id: str) -> None:
-    if _queue is not None:
-        _queue.put_nowait(task_id)
 
 
 # ---------- 健康 ----------
@@ -87,21 +66,12 @@ def health():
 # ---------- 配置 ----------
 @app.get("/api/config")
 def get_cfg():
-    return config.public_config(config.get_config())
+    return services.public_config()
 
 
 @app.post("/api/config")
 async def set_cfg(request: Request):
-    patch = await request.json()
-    patch = copy.deepcopy(patch or {})
-    tr = patch.get("translate")
-    if isinstance(tr, dict) and "api_key" in tr:
-        # key 只存 .env：新值写入，***/空 表示保留现有 key
-        key = tr.pop("api_key")
-        if key and key != "***":
-            config.write_env_key(key)
-    cfg = config.update_config(patch)
-    return config.public_config(cfg)
+    return services.apply_config_patch(await request.json())
 
 
 # ---------- 翻译连通性测试 ----------
@@ -113,19 +83,7 @@ class TranslateTestBody(BaseModel):
 
 @app.post("/api/translate/test")
 async def translate_test(body: TranslateTestBody):
-    cfg = copy.deepcopy(config.get_config().get("translate", {}))
-    if body.base_url:
-        cfg["base_url"] = body.base_url
-    if body.model:
-        cfg["model"] = body.model
-    if body.api_key and body.api_key != "***":
-        cfg["api_key"] = body.api_key
-    try:
-        from .translate import test_connection
-
-        return await test_connection(cfg)
-    except Exception as e:
-        return {"ok": False, "message": str(e)[:300], "sample": ""}
+    return await services.test_translate(body.base_url, body.api_key, body.model)
 
 
 # ---------- 模型管理 ----------
@@ -148,46 +106,16 @@ def download_model(body: ModelDownloadBody):
 
 
 # ---------- 任务创建 ----------
-def _validate_langs(source_lang: str, target_lang: str) -> tuple[str, str]:
-    if source_lang not in ("auto", "zh", "en", "ja"):
-        source_lang = "auto"
-    if target_lang not in ("zh", "en", "ja"):
-        target_lang = "zh"
-    return source_lang, target_lang
-
-
 @app.post("/api/tasks")
 async def create_tasks(
     files: list[UploadFile] = File(...),
     source_lang: str = Form("auto"),
     target_lang: str = Form("zh"),
 ):
-    source_lang, target_lang = _validate_langs(source_lang, target_lang)
-    tasks = []
-    for f in files:
-        if not f.filename:
-            continue
-        t = manager.create(Path(f.filename), {"source_lang": source_lang, "target_lang": target_lang},
-                           copy_into_task=False)
-        # 先建任务再流式写入文件（文件较大时避免占内存）
-        d = config.TASKS_DIR / t["id"]
-        dst = d / sanitize_filename(f.filename)
-        size = 0
-        with open(dst, "wb") as out:
-            while chunk := await f.read(1024 * 1024):
-                out.write(chunk)
-                size += len(chunk)
-        if size == 0:
-            manager.delete(t["id"])
-            continue
-        t = manager.get_mutable(t["id"])
-        t["media"]["path"] = str(dst)
-        t["name"] = dst.name
-        manager.persist(t["id"])
-        _enqueue(t["id"])
-        tasks.append(manager.get(t["id"]))
-    if not tasks:
-        raise HTTPException(400, "没有有效的上传文件")
+    try:
+        tasks = await services.create_tasks_from_uploads_async(files, source_lang, target_lang)
+    except services.ServiceError as e:
+        raise _svc_error(e)
     return {"tasks": tasks}
 
 
@@ -199,20 +127,7 @@ class LocalPathsBody(BaseModel):
 
 @app.post("/api/tasks/local")
 def create_local_tasks(body: LocalPathsBody):
-    source_lang, target_lang = _validate_langs(body.source_lang, body.target_lang)
-    tasks, missing = [], []
-    for p in body.paths:
-        p = p.strip().strip('"')
-        if not p:
-            continue
-        src = Path(p)
-        if not src.exists() or not src.is_file():
-            missing.append(p)
-            continue
-        t = manager.create(src, {"source_lang": source_lang, "target_lang": target_lang},
-                           copy_into_task=False)
-        _enqueue(t["id"])
-        tasks.append(t)
+    tasks, missing = services.create_tasks_from_paths(body.paths, body.source_lang, body.target_lang)
     return {"tasks": tasks, "missing": missing}
 
 
@@ -224,22 +139,10 @@ class UrlTasksBody(BaseModel):
 
 @app.post("/api/tasks/url")
 def create_url_tasks(body: UrlTasksBody):
-    source_lang, target_lang = _validate_langs(body.source_lang, body.target_lang)
-    tasks, invalid = [], []
-    seen = set()
-    for u in body.urls:
-        u = (u or "").strip()
-        if not u or u in seen:
-            continue
-        seen.add(u)
-        if not re.match(r"^https?://", u, re.IGNORECASE):
-            invalid.append(u)
-            continue
-        t = manager.create_url_task(u, {"source_lang": source_lang, "target_lang": target_lang})
-        _enqueue(t["id"])
-        tasks.append(t)
-    if not tasks and invalid:
-        raise HTTPException(400, f"{len(invalid)} 个链接无效（需要 http/https 开头）")
+    try:
+        tasks, invalid = services.create_tasks_from_urls(body.urls, body.source_lang, body.target_lang)
+    except services.ServiceError as e:
+        raise _svc_error(e)
     return {"tasks": tasks, "invalid": invalid}
 
 
@@ -251,66 +154,35 @@ def list_tasks(limit: int = 100):
 
 @app.get("/api/tasks/{task_id}")
 def get_task(task_id: str, segments: int = 0):
-    t = _get_or_404(task_id)
-    if segments:
-        seg_file = config.TASKS_DIR / task_id / "segments.json"
-        if seg_file.exists():
-            t["segments"] = json.loads(seg_file.read_text(encoding="utf-8"))
-    return t
+    try:
+        return services.get_task_detail(task_id, with_segments=bool(segments))
+    except services.ServiceError as e:
+        raise _svc_error(e)
 
 
 @app.delete("/api/tasks/{task_id}")
 def delete_task(task_id: str):
-    _get_or_404(task_id)
     try:
-        manager.delete(task_id)
-    except RuntimeError as e:
-        raise HTTPException(409, str(e))
+        services.delete_task(task_id)
+    except services.ServiceError as e:
+        raise _svc_error(e)
     return {"ok": True}
 
 
 @app.post("/api/tasks/{task_id}/cancel")
 def cancel_task(task_id: str):
-    t = manager.cancel(task_id)
-    if t is None:
-        raise HTTPException(404, "任务不存在")
-    return {"ok": True, "task": t}
+    try:
+        return {"ok": True, "task": services.cancel_task(task_id)}
+    except services.ServiceError as e:
+        raise _svc_error(e)
 
 
 @app.post("/api/tasks/{task_id}/retry")
 def retry_task(task_id: str):
-    _get_or_404(task_id)
-    t = manager.get_mutable(task_id)
-    if t["status"] in RUNNING_STAGES:
-        raise HTTPException(409, "任务尚在运行")
-    manager.update(task_id, status="queued", stage="queued", progress=0.0,
-                   message="排队中", error=None, cancel=False)
-    _enqueue(task_id)
-    return {"ok": True, "task": manager.get(task_id)}
-
-
-@app.post("/api/tasks/{task_id}/open_folder")
-def open_folder(task_id: str):
-    """在系统文件管理器中打开任务目录（优先产物目录 output/{视频名}/）。"""
-    _get_or_404(task_id)
-    t = manager.get(task_id)
-    d = config.TASKS_DIR / task_id
-    if t.get("output_dir") and Path(t["output_dir"]).exists():
-        d = Path(t["output_dir"])
-    d.mkdir(parents=True, exist_ok=True)
-    import os
-    import sys
-
     try:
-        if sys.platform == "win32":
-            os.startfile(str(d))  # type: ignore[attr-defined]
-        elif sys.platform == "darwin":
-            subprocess.Popen(["open", str(d)])
-        else:
-            subprocess.Popen(["xdg-open", str(d)])
-    except Exception as e:
-        raise HTTPException(500, f"无法打开文件夹：{e}")
-    return {"ok": True, "dir": str(d)}
+        return {"ok": True, "task": services.retry_task(task_id)}
+    except services.ServiceError as e:
+        raise _svc_error(e)
 
 
 class SegmentPatchBody(BaseModel):
@@ -319,29 +191,35 @@ class SegmentPatchBody(BaseModel):
 
 @app.patch("/api/tasks/{task_id}/segments/{index}")
 def patch_segment(task_id: str, index: int, body: SegmentPatchBody):
-    _get_or_404(task_id)
+    _task_or_404(task_id)
     try:
-        seg = pipeline.update_segment_text(task_id, index, body.translated)
+        return {"ok": True, "segment": update_segment_text(task_id, index, body.translated)}
     except IndexError:
         raise HTTPException(404, "段索引越界")
-    return {"ok": True, "segment": seg}
 
 
 @app.post("/api/tasks/{task_id}/segments/{index}/retranslate")
-async def retranslate_segment(task_id: str, index: int):
-    _get_or_404(task_id)
+async def retranslate_segment_api(task_id: str, index: int):
+    _task_or_404(task_id)
     try:
-        seg = await pipeline.retranslate_segment(task_id, index)
+        return {"ok": True, "segment": await retranslate_segment(task_id, index)}
     except IndexError:
         raise HTTPException(404, "段索引越界")
     except Exception as e:
         raise HTTPException(502, f"重翻失败：{e}")
-    return {"ok": True, "segment": seg}
+
+
+@app.post("/api/tasks/{task_id}/open_folder")
+def open_folder(task_id: str):
+    try:
+        return {"ok": True, "dir": services.open_task_folder(task_id)}
+    except services.ServiceError as e:
+        raise _svc_error(e)
 
 
 # ---------- SSE ----------
 async def _sse_stream(task_id: str):
-    t = _get_or_404(task_id)
+    t = _task_or_404(task_id)
     yield f"data: {json.dumps({'type': 'progress', 'task': t}, ensure_ascii=False)}\n\n"
     try:
         async for q in manager.subscribe(task_id):
@@ -369,7 +247,7 @@ async def task_events(task_id: str):
 # ---------- 下载 ----------
 @app.get("/api/tasks/{task_id}/download")
 def download(task_id: str, type: str = "bilingual_srt"):
-    _get_or_404(task_id)
+    _task_or_404(task_id)
     fname = subtitles.OUTPUT_FILES.get(type)
     if not fname:
         raise HTTPException(400, f"未知类型: {type}")
@@ -387,9 +265,9 @@ def download(task_id: str, type: str = "bilingual_srt"):
 # ---------- 媒体流（支持 Range，供 <video> 拖动） ----------
 @app.get("/api/media/{task_id}")
 def media(task_id: str, request: Request):
-    t = _get_or_404(task_id)
-    path = Path(t["media"]["path"])
-    if not path.exists():
+    _task_or_404(task_id)
+    path = Path(manager.get(task_id)["media"]["path"] or "")
+    if not str(path) or not path.exists():
         raise HTTPException(404, "媒体文件不存在")
     size = path.stat().st_size
     ct = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
