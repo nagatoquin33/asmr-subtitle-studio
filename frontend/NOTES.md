@@ -46,6 +46,50 @@
 - 外链资源检查：HTML 无 `http(s)://` 引用，CSS `url()` 全部为 data-URI，零外部资源。
 - 浏览器渲染冒烟测试因当前环境无浏览器能力而跳过。
 
+## 2026-11 v2.1「顺手一点」易用性增强
+
+> 目标：不改任务管线语义，只把「找、选、改、导」变顺。新增 `ux.css`（在 `style.css` 之后加载，仅增量覆盖），`app.js` / `index.html` / `api.js` 增量修改。
+
+### 结构增量
+
+- 顶栏：`#btnShortcuts`（快捷键面板）。
+- 就绪检查条 `#setupBanner`（`#sbTitle` / `#sbList` / `#sbActions` / `#btnSetupClose`）。
+- 队列：`#queueTools`（`#queueSearch` / `#btnQueueClear` / `#queueSort` / `#btnBatchMode`）、`#queueFilters`（4 个 `.qt-chip`，计数 `#fAll/#fActive/#fDone/#fFailed`）、`#batchBar`（`#batchAll` / `#batchCount` / 批量重试·取消·删除）、`#queueFoot`（`#btnLoadMore` / `#queueTotal`）。
+- 空状态：`#esTitle` / `#esHint` 改为动态，新增 `#esActions`（选择文件 / 粘贴链接 / 配置 API）。
+- 任务卡：`.tc-check`、`.tc-more`、`.tc-menu`（动态生成）。
+- 导出：`#btnCopySub` / `#btnExportAll` / `.export-hint`。
+- 字幕：`#segSearch` / `#segSearchInfo` / `#btnSegSearchPrev|Next`、`#segTimeTools`（`#shiftInput` / `#btnShiftApply` / `#btnRetransPage`）、表头「操作」列 `.col-ops`。
+- 设置：`#cfgProvider` + `#providerNote`、`#btnExportConfig` / `#btnImportConfig` / `#btnOpenDataDir` / `#cfgDataInfo`；模型行新增「删除」与「默认」标记。
+- 弹窗：`#shortcutOverlay`（快捷键）、`#askOverlay`（数值输入，`askValue()` Promise 封装）。
+
+### 行为决策 / 假设
+
+1. **筛选与排序纯前端**：`GET list_tasks` 只按 `limit/offset` 取回，筛选（状态/关键字）、排序（创建/更新/名称/时长）都在 `visibleTasks()` 里做；因此状态筛选只管已加载的页，超出部分用「加载更多」。
+2. **`total` 兼容**：旧后端（Python FastAPI）不返回 `total` 时回退 `tasks.length`；只有 `list.length < limit || total <= limit` 才清理本地缓存（避免误删未加载的任务）。
+3. **批量删除**会连带删除产物目录（与单任务删除一致），批量重试/取消只作用于状态合适的任务，最终以 toast 汇总成功/失败数。
+4. **原文编辑**走 `patch_segment_fields(text)`（桌面版专用）；浏览器模式隐藏该能力（双击无响应，`title` 置空）。时间码/合并/拆分/整轨平移/批量重翻同样只对桌面版开放；桌面版不可用时用 `desktop/*` 类 + `init` 里显式 `hidden`。
+5. **合并/拆分/平移/批量重翻**返回全量 segments，前端整体替换本地缓存（`applySegmentsFromServer`），再重算搜索命中与页数，不做局部 diff。
+6. **拆分默认值**：若播放器当前时间落在该句内则用它，否则取中点；用 `askValue()` 弹窗可改，校验 `start < at < end-0.05`。
+7. **时间轴平移**：`#shiftInput` 支持负数（提前）；0 或空值直接 toast 拒绝，不改数据。
+8. **重翻本页**：取当前页全部句子的 index 调 `retranslate_batch`，按钮上做 0.9s 假进度（真实进度由后端整体返回），完成后 toast 报失败句数。
+9. **播放跟随**：`timeupdate/seeked` 时按时间找当前句，翻页 + `setActiveSeg(scroll)`；只在字幕已加载（`segmentsFor === selectedId`）时生效。
+10. **键盘作用域**：↑↓/Space/←→ 仅在焦点位于字幕表或播放器区域内拦截（避免抢走队列滚动）；卡片被聚焦时 ↑↓ 切换选中任务。
+11. **偏好持久化**：`localStorage['asmr.prefs.v1']` 存语言、排序、筛选、上次任务 id；`lastTaskId` 在删除任务时清空。
+12. **复制文本**：优先 `navigator.clipboard.writeText`（900ms 超时兜底），失败回退 `execCommand('copy')`；WebView 权限拒绝时给出失败 toast，不阻塞 UI。
+13. **导出一键全部**：桌面版调 `export_all_outputs`（原生文件夹选择框，一次写 6 个文件）；浏览器模式隐藏该按钮。
+14. **服务商预设**只填 `base_url` 与 `model`（不改已保存的 Key），并在 `#providerNote` 写出该服务商的注意事项。
+15. **配置导出**剔除 `translate.api_key`；**导入**只填表单不自动保存，需再点「保存设置」。
+16. **模型删除**仅对 `ready` 状态且桌面版显示；删除后刷新模型列表与就绪检查。
+17. **未配置 Key 拦截**：添加任务前（拖拽/文件夹/本地路径/链接）统一走 `ensureReadyForTasks()`，Mock 模式或已存 Key 时直接放行；选择「取消」会打开设置页。
+18. **就绪检查条**：健康状态、`config`（Key/Mock/默认模型）与模型列表三者合成；手动关闭仅本次运行有效（不写偏好）。
+
+### 自检
+
+- `node --check app.js` / `api.js` 通过。
+- 元素 ID 交叉核对：app.js 引用 139 个 id，全部存在于 index.html。
+- 桌面版实机（WebView2 + CDP）：初始态、详情、搜索命中/高亮、+1s/-1s 平移、合并（4→3 段）、拆分（默认取中点）、原文双击修改与还原、批量选择、设置弹窗与预设、快捷键面板、Ctrl+K/Ctrl+F、↑↓ 选句、Space 播放、筛选空态、任务卡菜单 —— 均通过，无 JS 异常。
+- 浏览器模式（Python 后端）仅做静态检查：桌面专用控件隐藏，其余逻辑走原有 REST 路径。
+
 ## API 假设
 
 1. **`has_api_key` 的位置**：契约写「另带 has_api_key」但未明说层级。前端按 `cfg.has_api_key`（顶层）读取，并兜底 `cfg.translate.has_api_key`（POST 返回值同理）。

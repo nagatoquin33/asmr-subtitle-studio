@@ -8,6 +8,7 @@
   <title>ASMR 字幕工作室</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23f5b56b' d='M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5.1A7 7 0 0 1 12 5a7 7 0 0 1 6.9 6H17a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z'/></svg>">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="ux.css">
 </head>
 <body>
 
@@ -32,12 +33,28 @@
         <span class="h-dot" id="healthDot"></span>
         <span id="healthText">连接中…</span>
       </div>
+      <button type="button" class="btn btn-ghost btn-icon" id="btnShortcuts" title="键盘快捷键（?）" aria-label="键盘快捷键">
+        <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></svg>
+      </button>
       <button type="button" class="btn btn-ghost" id="btnSettings">
         <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         设置
       </button>
     </div>
   </header>
+
+  <!-- ======= 就绪检查条（首启引导 / 缺配置时出现） ======= -->
+  <div id="setupBanner" class="setup-banner" hidden>
+    <div class="sb-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v2M12 19v2M4.2 7.4l1.4 1.4M18.4 15.2l1.4 1.4M3 12h2M19 12h2M4.2 16.6l1.4-1.4M18.4 8.8l1.4-1.4"/><circle cx="12" cy="12" r="4.2"/></svg>
+    </div>
+    <div class="sb-body">
+      <div class="sb-title" id="sbTitle"></div>
+      <div class="sb-list" id="sbList"></div>
+    </div>
+    <div class="sb-actions" id="sbActions"></div>
+    <button type="button" class="sb-close" id="btnSetupClose" title="本次运行不再提示" aria-label="隐藏提示">✕</button>
+  </div>
 
   <!-- ======= 主布局 ======= -->
   <main id="layout">
@@ -58,6 +75,11 @@
         </div>
         <input type="file" id="fileInput" multiple hidden
                accept=".mp3,.wav,.flac,.m4a,.aac,.ogg,.oga,.opus,.wma,.aiff,.aif,.ape,.mp4,.mkv,.mov,.avi,.webm,.flv,.ts,.m4v,.wmv,.mpg,.mpeg,.3gp">
+        <button type="button" class="btn btn-ghost btn-block desktop-only" id="btnAddFolder"
+                title="选择一个文件夹，其中的音视频文件（含子文件夹）将逐个建任务批量处理">
+          <svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          导入文件夹（批量处理，含子文件夹）
+        </button>
         <div class="lang-row">
           <label class="lang-field">源语言
             <select id="sourceLang">
@@ -81,7 +103,13 @@
           <div class="bar"><div class="bar-fill" id="uploadBarFill" style="width:0%"></div></div>
         </div>
         <details class="local-path" id="urlDownloadBox">
-          <summary>🔗 链接下载（bilibili / YouTube 等）</summary>
+          <summary>
+            <svg class="sum-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+            链接下载（bilibili / YouTube 等）
+          </summary>
           <div class="lp-body">
             <textarea id="downloadUrls" rows="4" spellcheck="false"
                       placeholder="每行一个视频页链接，例如：&#10;https://www.bilibili.com/video/BV…&#10;https://www.youtube.com/watch?v=…&#10;支持 bilibili、YouTube 及其它 yt-dlp 支持的平台"></textarea>
@@ -102,15 +130,57 @@
         <h2>任务队列</h2>
         <span id="taskCount" class="list-count mono">0</span>
       </div>
+
+      <!-- 队列工具条：搜索 / 排序 / 批量 -->
+      <div id="queueTools" class="queue-tools">
+        <div class="qt-search">
+          <svg class="qt-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+          <input id="queueSearch" type="search" placeholder="搜索任务名 / 路径（Ctrl+K）" autocomplete="off" spellcheck="false" aria-label="搜索任务">
+          <button type="button" class="qt-clear" id="btnQueueClear" hidden aria-label="清空搜索">✕</button>
+        </div>
+        <select id="queueSort" class="qt-sort" aria-label="排序方式" title="排序方式">
+          <option value="created">最新创建</option>
+          <option value="updated">最近更新</option>
+          <option value="name">名称排序</option>
+          <option value="duration">时长最长</option>
+        </select>
+        <button type="button" class="btn btn-ghost btn-sm qt-batch-btn" id="btnBatchMode" title="进入批量选择模式">批量</button>
+      </div>
+      <div class="qt-chips" id="queueFilters" role="tablist" aria-label="按状态筛选">
+        <button type="button" class="qt-chip is-on" data-filter="all" role="tab" aria-selected="true">全部 <b id="fAll">0</b></button>
+        <button type="button" class="qt-chip" data-filter="active" role="tab" aria-selected="false">进行中 <b id="fActive">0</b></button>
+        <button type="button" class="qt-chip" data-filter="done" role="tab" aria-selected="false">已完成 <b id="fDone">0</b></button>
+        <button type="button" class="qt-chip" data-filter="failed" role="tab" aria-selected="false">未完成 <b id="fFailed">0</b></button>
+      </div>
+      <div class="batch-bar" id="batchBar" hidden>
+        <label class="bb-all"><input type="checkbox" id="batchAll"><span>全选</span></label>
+        <span class="bb-count mono" id="batchCount">已选 0</span>
+        <div class="bb-actions">
+          <button type="button" class="btn btn-ghost btn-xs" id="btnBatchRetry" title="重新入队选中的失败/取消任务">重试</button>
+          <button type="button" class="btn btn-ghost btn-xs" id="btnBatchCancel" title="取消选中任务中正在运行的">取消</button>
+          <button type="button" class="btn btn-danger btn-xs" id="btnBatchDelete" title="删除选中任务及产物">删除</button>
+        </div>
+      </div>
+
       <div id="taskList" class="task-list" role="list"></div>
+
+      <div class="queue-foot" id="queueFoot" hidden>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnLoadMore">加载更多</button>
+        <span class="queue-total mono" id="queueTotal"></span>
+      </div>
 
       <div id="emptyState" class="empty-state" hidden>
         <div class="waveform" aria-hidden="true">
           <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
           <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
         </div>
-        <div class="es-title">队列为空</div>
-        <div class="es-hint">把音视频拖进上方区域，<br>让今晚的声音留下字幕</div>
+        <div class="es-title" id="esTitle">队列为空</div>
+        <div class="es-hint" id="esHint">把音视频拖进上方区域，<br>让今晚的声音留下字幕</div>
+        <div class="es-actions" id="esActions">
+          <button type="button" class="btn btn-primary btn-sm" id="esPickFile">选择文件</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="esPasteLink">粘贴链接</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="esOpenSettings">配置翻译 API</button>
+        </div>
       </div>
     </section>
 
@@ -173,6 +243,10 @@
           <div class="sec-head">
             <span class="sec-title">导出字幕</span>
             <i class="sec-rule" aria-hidden="true"></i>
+            <div class="export-extra">
+              <button type="button" class="btn btn-ghost btn-sm" id="btnCopySub" title="复制双语字幕纯文本到剪贴板">复制文本</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="btnExportAll" title="选择文件夹，一次导出全部 6 种字幕文件">导出全部…</button>
+            </div>
           </div>
           <div id="exportRow" class="export-row">
             <a class="btn btn-ghost btn-sm" data-type="orig_srt" download>原文 SRT</a>
@@ -181,7 +255,10 @@
             <a class="btn btn-ghost btn-sm" data-type="bilingual_ass" download>双语 ASS</a>
             <a class="btn btn-ghost btn-sm" data-type="bilingual_vtt" download>双语 VTT</a>
             <a class="btn btn-ghost btn-sm" data-type="json" download>JSON</a>
+            <a class="btn btn-ghost btn-sm desktop-burn" data-type="burn_mp4" title="将双语 ASS 字幕烧录进画面（N 卡硬件加速）">成品视频（硬字幕）</a>
+            <a class="btn btn-ghost btn-sm desktop-burn" data-type="burn_mkv" title="字幕作为独立轨道封装进 MKV，秒级完成，播放器可开关">软字幕 MKV</a>
           </div>
+          <div class="export-hint">全部为 UTF-8 编码；硬字幕会用 ASS 样式烧进画面，软字幕 MKV 播放器内可开关</div>
         </div>
 
         <!-- 字幕编辑 -->
@@ -197,6 +274,22 @@
               <button type="button" class="btn btn-ghost btn-sm" id="btnPageLast" title="最后一页">»</button>
             </div>
           </div>
+          <div class="seg-tools">
+            <div class="seg-search">
+              <svg class="qt-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/></svg>
+              <input id="segSearch" type="search" placeholder="搜索原文 / 译文（Ctrl+F）" autocomplete="off" spellcheck="false" aria-label="搜索字幕">
+              <span id="segSearchInfo" class="seg-search-info mono" hidden></span>
+              <button type="button" class="seg-nav" id="btnSegSearchPrev" hidden title="上一处（Shift+Enter）" aria-label="上一处">↑</button>
+              <button type="button" class="seg-nav" id="btnSegSearchNext" hidden title="下一处（Enter）" aria-label="下一处">↓</button>
+            </div>
+            <div class="seg-tools-right desktop-only" id="segTimeTools">
+              <span class="seg-tool-label">整体平移</span>
+              <input id="shiftInput" class="shift-input mono" type="number" step="0.1" placeholder="±秒" aria-label="时间轴整体平移秒数">
+              <button type="button" class="btn btn-ghost btn-xs" id="btnShiftApply" title="把所有时间码整体平移（负数为提前）">应用</button>
+              <span class="seg-tool-sep" aria-hidden="true"></span>
+              <button type="button" class="btn btn-ghost btn-xs" id="btnRetransPage" title="重新翻译当前页的所有句子">重翻本页</button>
+            </div>
+          </div>
           <div class="seg-scroll">
             <table class="seg-table">
               <thead>
@@ -204,6 +297,7 @@
                   <th class="col-tc">时间码</th>
                   <th class="col-orig">原文</th>
                   <th class="col-trans">译文</th>
+                  <th class="col-ops">操作</th>
                 </tr>
               </thead>
               <tbody id="segBody"></tbody>
@@ -239,7 +333,7 @@
               <select id="cfgDevice">
                 <option value="auto">auto</option>
                 <option value="cpu">cpu</option>
-                <option value="cuda">cuda</option>
+                <option value="gpu">gpu</option>
               </select>
             </label>
             <label class="cfg-field span-2">计算精度
@@ -254,6 +348,19 @@
 
         <section class="cfg-group">
           <div class="cfg-legend"><span>翻译 API</span><i class="cfg-rule" aria-hidden="true"></i></div>
+          <div class="provider-row">
+            <label class="cfg-field provider-select">服务商预设
+              <select id="cfgProvider" aria-label="服务商预设">
+                <option value="">— 选择后自动填好接口地址与模型名 —</option>
+                <option value="deepseek">DeepSeek（官方）</option>
+                <option value="moonshot">Moonshot / Kimi</option>
+                <option value="openai">OpenAI</option>
+                <option value="ollama">Ollama（本地）</option>
+                <option value="oneapi">One API / 自建中转</option>
+              </select>
+            </label>
+            <span class="provider-note" id="providerNote"></span>
+          </div>
           <div class="cfg-grid">
             <label class="cfg-field span-3">Base URL
               <input id="cfgBaseUrl" type="text" placeholder="https://api.deepseek.com/v1" spellcheck="false">
@@ -262,7 +369,11 @@
               <input id="cfgApiKey" type="password" placeholder="sk-…" autocomplete="new-password" spellcheck="false">
             </label>
             <label class="cfg-field">模型名
-              <input id="cfgTranslateModel" type="text" placeholder="deepseek-chat" spellcheck="false">
+              <input id="cfgTranslateModel" type="text" list="translateModelPresets" placeholder="deepseek-flash" spellcheck="false">
+              <datalist id="translateModelPresets">
+                <option value="deepseek-flash"></option>
+                <option value="deepseek-v4-pro"></option>
+              </datalist>
             </label>
             <label class="cfg-field">Temperature
               <input id="cfgTemperature" type="number" min="0" max="2" step="0.1">
@@ -330,12 +441,22 @@
         <section class="cfg-group">
           <div class="cfg-legend"><span>ASR 模型下载</span><i class="cfg-rule" aria-hidden="true"></i></div>
           <div class="models-head">
-            <span class="cfg-note">模型从魔搭（ModelScope）下载到本地 data/models/，下载完成后即可用于识别</span>
+            <span class="cfg-note">模型从国内镜像（hf-mirror.com）下载到本地 data/models/，断点续传，下载完成后即可用于识别</span>
             <button type="button" class="btn btn-ghost btn-sm" id="btnModelsRefresh">刷新</button>
           </div>
           <div id="modelsList" class="models-list">
             <div class="models-loading">加载中…</div>
           </div>
+        </section>
+
+        <section class="cfg-group">
+          <div class="cfg-legend"><span>配置管理</span><i class="cfg-rule" aria-hidden="true"></i></div>
+          <div class="cfg-actions">
+            <button type="button" class="btn btn-ghost btn-sm" id="btnExportConfig" title="把当前设置（不含 API Key）复制为 JSON，方便备份或换机">复制配置</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnImportConfig" title="从剪贴板粘贴 JSON 并填入表单（不会自动保存）">从剪贴板导入</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="btnOpenDataDir" title="打开 data / output 所在目录">打开数据目录</button>
+          </div>
+          <div class="cfg-note" id="cfgDataInfo"></div>
         </section>
       </div>
       <div class="modal-foot">
@@ -343,6 +464,67 @@
         <div class="modal-foot-btns">
           <button type="button" class="btn btn-ghost" id="btnCancelSettings">取消</button>
           <button type="button" class="btn btn-primary" id="btnSaveSettings">保存设置</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 快捷键面板 ======= -->
+  <div id="shortcutOverlay" class="modal-overlay" hidden>
+    <div class="modal card modal-narrow" role="dialog" aria-modal="true" aria-labelledby="shortcutTitle">
+      <div class="modal-head">
+        <h2 id="shortcutTitle">键盘快捷键</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnCloseShortcuts" title="关闭 (Esc)">✕</button>
+      </div>
+      <div class="modal-body shortcut-body">
+        <div class="sc-group">
+          <div class="sc-legend">队列</div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Ctrl</kbd><kbd>K</kbd></span><span>聚焦任务搜索框</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span><span>选中任务卡时切换上下任务，<kbd>Enter</kbd> 打开详情</span></div>
+        </div>
+        <div class="sc-group">
+          <div class="sc-legend">字幕编辑</div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Ctrl</kbd><kbd>F</kbd></span><span>搜索字幕（<kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd> 跳上下一个）</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>↑</kbd><kbd>↓</kbd></span><span>选中上一句 / 下一句，<kbd>Enter</kbd> 进入译文编辑</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Ctrl</kbd><kbd>Enter</kbd></span><span>保存当前译文并跳到下一句</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Ctrl</kbd><kbd>S</kbd></span><span>立即保存当前译文</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Esc</kbd></span><span>取消编辑 / 关闭面板</span></div>
+        </div>
+        <div class="sc-group">
+          <div class="sc-legend">播放</div>
+          <div class="sc-row"><span class="sc-keys"><kbd>Space</kbd></span><span>播放 / 暂停（焦点不在输入框时）</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>←</kbd><kbd>→</kbd></span><span>后退 / 前进 2 秒</span></div>
+          <div class="sc-row"><span class="sc-keys"><kbd>?</kbd></span><span>打开 / 关闭本面板</span></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <span class="cfg-note">双击原文可直接修正 ASR 识别错误；单击时间码可跳到播放位置。</span>
+        <div class="modal-foot-btns">
+          <button type="button" class="btn btn-ghost" id="btnCloseShortcuts2">关闭</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======= 数值输入（拆分字幕 / 时间平移） ======= -->
+  <div id="askOverlay" class="modal-overlay" hidden>
+    <div class="modal card modal-narrow" role="dialog" aria-modal="true" aria-labelledby="askTitle">
+      <div class="modal-head">
+        <h2 id="askTitle">输入</h2>
+        <button type="button" class="btn btn-ghost btn-sm" id="btnAskClose" title="关闭 (Esc)">✕</button>
+      </div>
+      <div class="modal-body">
+        <label class="ask-field" for="askInput">
+          <span id="askLabel" class="ask-label"></span>
+          <input id="askInput" type="text" class="ask-input mono" spellcheck="false" autocomplete="off">
+        </label>
+        <div class="ask-note" id="askNote"></div>
+      </div>
+      <div class="modal-foot">
+        <span class="cfg-note" id="askError"></span>
+        <div class="modal-foot-btns">
+          <button type="button" class="btn btn-ghost" id="btnAskCancel">取消</button>
+          <button type="button" class="btn btn-primary" id="btnAskOk">确定</button>
         </div>
       </div>
     </div>

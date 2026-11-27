@@ -22,7 +22,7 @@
 
   --text: #e7eaf1;
   --text-dim: #9aa3b5;
-  --text-faint: #657086;
+  --text-faint: #7c8698;
 
   --amber: #f5b56b;         /* 唤醒 / 进行态 */
   --amber-ink: #241505;     /* 琥珀底上的深色文字 */
@@ -317,21 +317,23 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 .btn-xs { padding: 2px 9px; font-size: 11px; border-radius: 6px; }
 .btn-block { width: 100%; }
 
-a.btn.disabled { pointer-events: none; opacity: 0.35; }
+a.btn.disabled { pointer-events: none; opacity: 0.45; }
 
-/* 状态徽章：极简圆点 + 文字（无底色药丸） */
+/* 状态徽章：圆点 + 文字 + 状态色淡底药丸（列表扫读性） */
 .badge {
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  padding: 2px 4px;
+  padding: 2px 9px;
+  border-radius: 999px;
   font-size: 11.5px;
   font-weight: 600;
   letter-spacing: 0.5px;
   white-space: nowrap;
   flex: none;
   color: var(--st-c, var(--text-dim));
-  background: transparent;
+  background: rgba(255, 255, 255, 0.04); /* color-mix 兜底 */
+  background: color-mix(in srgb, var(--st-c, #9aa3b5) 10%, transparent);
   border: none;
 }
 .badge .dot {
@@ -397,6 +399,7 @@ a.btn.disabled { pointer-events: none; opacity: 0.35; }
 .bar-fill.fill-canceled { background: rgba(255, 255, 255, 0.18); }
 .bar-fill.fill-error    { background: linear-gradient(90deg, #e05b5b, #f87171); }
 .bar-fill.fill-canceled::after,
+.bar-fill.fill-done::after,
 .bar-fill.fill-error::after { content: none; }
 
 /* ---------------- 表单控件 ---------------- */
@@ -447,11 +450,12 @@ input[type="checkbox"] {
   transition: background-color var(--t-fast), background-position var(--t-fast);
 }
 input[type="checkbox"]:checked {
-  background-color: rgba(245, 181, 107, 0.5);
+  background-color: var(--amber);
+  background-image: radial-gradient(circle, var(--amber-ink) 0 5.5px, transparent 6px);
   background-position: calc(100% - 3px) center;
 }
 input[type="checkbox"]:hover { background-color: rgba(255, 255, 255, 0.2); }
-input[type="checkbox"]:checked:hover { background-color: rgba(245, 181, 107, 0.62); }
+input[type="checkbox"]:checked:hover { background-color: #ffc07d; }
 input[type="checkbox"]:focus-visible {
   outline: 2px solid rgba(245, 181, 107, 0.55);
   outline-offset: 2px;
@@ -557,7 +561,7 @@ input[type="checkbox"]:focus-visible {
   margin-bottom: 6px;
 }
 .up-label span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#uploadPct { color: var(--cyan); flex: none; }
+#uploadPct { color: var(--amber); flex: none; }
 
 /* 折叠面板：视觉弱化为次级入口 */
 .local-path { margin-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 11px; }
@@ -614,8 +618,8 @@ input[type="checkbox"]:focus-visible {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: rgba(103, 232, 249, 0.08);
-  color: #8fdcea;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-dim);
   font-size: 11px;
 }
 
@@ -961,7 +965,7 @@ input[type="checkbox"]:focus-visible {
 .media-slot video {
   display: block;
   width: 100%;
-  max-height: 460px;
+  max-height: min(460px, 40vh);
   background: #000;
   border-radius: 10px;
   border: 1px solid var(--border);
@@ -998,15 +1002,33 @@ input[type="checkbox"]:focus-visible {
   font-weight: 600;
 }
 .export-row a.btn-primary:hover { background: #ffc07d; color: var(--amber-ink); }
-.export-row a.disabled { pointer-events: none; opacity: 0.32; }
+.export-row a.disabled { pointer-events: none; opacity: 0.45; }
+.export-row a.btn-primary.disabled {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-faint);
+}
 
 /* 字幕编辑表 */
 .pager { display: flex; align-items: center; gap: 4px; flex: none; }
 .page-info { font-size: 12px; color: var(--text-dim); min-width: 58px; text-align: center; }
 
+/* 危险操作分隔线：删除按钮与常规操作组拉开 */
+#btnDelete { margin-left: 8px; position: relative; }
+#btnDelete::before {
+  content: '';
+  position: absolute;
+  left: -7px; top: 5px; bottom: 5px;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+/* 字幕表偶数行斑马纹（校对场景行锚点；不影响 flagged/hover） */
+.seg-table tbody tr:nth-child(even):not(.flagged) { background: rgba(255, 255, 255, 0.016); }
+.seg-table tbody tr:nth-child(even):not(.flagged):hover { background: rgba(255, 255, 255, 0.035); }
+
 .seg-scroll {
   overflow: auto;
-  max-height: 600px;
+  max-height: clamp(320px, calc(100vh - 560px), 620px);
   border: 1px solid var(--border);
   border-radius: 10px;
   background: rgba(0, 0, 0, 0.16);
@@ -1271,7 +1293,7 @@ input.trans-input.saved { border-bottom-color: rgba(103, 232, 249, 0.75); }
   line-height: 1.5;
 }
 .model-bar-row { display: flex; align-items: center; gap: 8px; }
-.model-pct { font-size: 11px; color: var(--cyan); width: 36px; text-align: right; flex: none; }
+.model-pct { font-size: 11px; color: var(--amber); width: 36px; text-align: right; flex: none; }
 .model-detail { font-size: 11.5px; color: var(--red); word-break: break-all; }
 .model-detail.info { color: var(--text-faint); }
 
@@ -1380,3 +1402,6 @@ input.trans-input.saved { border-bottom-color: rgba(103, 232, 249, 0.75); }
     transition-delay: 0ms !important;
   }
 }
+
+/* 折叠面板标题图标（单色描边体系，替代 emoji） */
+.local-path .sum-ico { width: 14px; height: 14px; flex: none; opacity: 0.85; }

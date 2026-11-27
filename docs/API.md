@@ -54,7 +54,7 @@
   "translate": {
     "base_url": "https://api.deepseek.com/v1",
     "api_key": "",
-    "model": "deepseek-chat",
+    "model": "deepseek-flash",
     "temperature": 0.2,
     "concurrency": 3,
     "batch_size": 40,
@@ -163,3 +163,25 @@ cfg 即配置中 `translate` 节（可能包含额外键，需容忍）。`mock=
 - `LLM_API_KEY` 存放在程序目录的 `.env` 文件；`config.json` 永不保存 key。
 - `POST /api/config` 传入非空、非 `***` 的 `translate.api_key` 时写入 `.env`；`***`/空表示保留。
 - 首次启动检测到 config.json 残留旧 key 时自动迁移到 `.env` 并清除。
+
+## 桌面版 IPC 附加命令（Tauri v2，v2.1）
+
+桌面版没有 HTTP 服务，前端通过 `invoke('命令名', {参数})` 调用 Rust 命令。除了与上面 REST
+一一对应的命令（`get_config` / `list_tasks` / `get_task` / `patch_segment` …）外，桌面版额外提供：
+
+| 命令（JS 参数 camelCase） | 返回 | 说明 |
+|---|---|---|
+| `patch_segment_fields({taskId, index, text?, translated?, start?, end?})` | `{ok, segments}` | 仅更新传入字段（`null` = 不改）；保证 `end > start`；重写全部产物 |
+| `shift_segments({taskId, offset})` | `{ok, segments}` | 全部时间码整体平移，`start ≥ 0` |
+| `merge_segments({taskId, index})` | `{ok, segments}` | 合并 index 与 index+1 |
+| `split_segment({taskId, index, at})` | `{ok, segments}` | 在绝对秒 `at` 处拆分（要求 `start < at < end-0.05`） |
+| `retranslate_batch({taskId, indices})` | `{ok, segments, failed:[{index,error}]}` | 并发 ≤ clamp(concurrency,1,6)，整批只写盘一次 |
+| `export_all_outputs({taskId})` | `{ok, dir, count}` / `{ok, path:null}` | 原生文件夹选择框，一次写 6 种产物；取消返回 `path:null` |
+| `delete_model({name})` | `{ok}` | 仅接受 `small/medium/large-v3/large-v3-turbo` |
+| `cancel_burn({taskId})` | `{ok}` | 取消硬字幕/软字幕渲染；事件 `burn-events` 的 `phase` 为 `canceled` |
+| `app_paths()` | `{root,data,output,models,tasks,tools}` | 目录绝对路径 |
+| `list_tasks({limit, offset})` | `{tasks, total}` | `total` 为全部任务数（不受分页影响） |
+| `reveal_path({path})` | `{ok}` | 资源管理器定位（文件或目录） |
+
+事件：`task-events`（任务状态，payload 同 REST SSE 的 `{type, task}`）、
+`burn-events`（`{taskId, phase: running|done|error|canceled, progress?, path?, message?}`）。
