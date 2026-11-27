@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use parking_lot::Mutex;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use whisper_rs::{
     FullParams, SamplingStrategy, WhisperContext, WhisperContextParameters, WhisperVadParams,
@@ -185,6 +186,7 @@ pub fn load_wav_16k_mono(path: &std::path::Path) -> Result<Vec<f32>> {
     Ok(samples)
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct AsrOptions {
     pub model_path: std::path::PathBuf,
     pub vad_model_path: Option<std::path::PathBuf>,
@@ -193,6 +195,7 @@ pub struct AsrOptions {
     pub vad: String,                 // auto / on / off
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct AsrOutcome {
     pub segments: Vec<Value>,
     pub meta: Value,

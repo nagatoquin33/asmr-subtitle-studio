@@ -1,6 +1,6 @@
 //! 字幕文件输出：SRT / VTT / ASS / JSON（与 Python 版逐字节兼容，含 BOM）。
 
-use std::fs;
+use std::{fs, io};
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
@@ -102,20 +102,17 @@ fn pair(seg: &Value, mode: &str, order: &str) -> String {
     }
 }
 
-fn write_text(path: &Path, text: &str, bom: bool) -> PathBuf {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
+fn write_text(path: &Path, text: &str, bom: bool) -> io::Result<PathBuf> {
     let mut out = Vec::new();
     if bom {
         out.extend_from_slice(&[0xEF, 0xBB, 0xBF]);
     }
     out.extend_from_slice(text.as_bytes());
-    let _ = fs::write(path, out);
-    path.to_path_buf()
+    fs::write(path, out)?;
+    Ok(path.to_path_buf())
 }
 
-fn write_srt(path: &Path, segments: &[Value], mode: &str, order: &str, max_chars: usize) -> PathBuf {
+fn write_srt(path: &Path, segments: &[Value], mode: &str, order: &str, max_chars: usize) -> io::Result<PathBuf> {
     let mut blocks = Vec::new();
     for (i, seg) in segments.iter().enumerate() {
         let text = wrap(&pair(seg, mode, order), max_chars);
@@ -130,7 +127,7 @@ fn write_srt(path: &Path, segments: &[Value], mode: &str, order: &str, max_chars
     write_text(path, &blocks.join("\n"), true)
 }
 
-fn write_vtt(path: &Path, segments: &[Value], order: &str, max_chars: usize) -> PathBuf {
+fn write_vtt(path: &Path, segments: &[Value], order: &str, max_chars: usize) -> io::Result<PathBuf> {
     let mut lines = vec!["WEBVTT".to_string(), String::new()];
     for seg in segments {
         lines.push(format!(
@@ -160,7 +157,7 @@ Style: Trans,Microsoft YaHei,62,&H00FFFFFF,&H000000FF,&H00000000,&H96000000,0,0,
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 ";
 
-fn write_ass(path: &Path, segments: &[Value], order: &str, max_chars: usize) -> PathBuf {
+fn write_ass(path: &Path, segments: &[Value], order: &str, max_chars: usize) -> io::Result<PathBuf> {
     let mut events = Vec::new();
     for seg in segments {
         let trans = wrap(&seg_str(seg, "translated"), max_chars).replace('\n', "\\N");
@@ -182,7 +179,7 @@ fn write_ass(path: &Path, segments: &[Value], order: &str, max_chars: usize) -> 
 }
 
 /// 在 out_dir 写出全部产物，返回 type → 绝对路径。
-pub fn write_all(out_dir: &Path, segments: &[Value], out_cfg: &Value) -> serde_json::Map<String, Value> {
+pub fn write_all(out_dir: &Path, segments: &[Value], out_cfg: &Value) -> io::Result<serde_json::Map<String, Value>> {
     let order = out_cfg
         .get("bilingual_order")
         .and_then(|v| v.as_str())
@@ -194,33 +191,33 @@ pub fn write_all(out_dir: &Path, segments: &[Value], out_cfg: &Value) -> serde_j
         .unwrap_or(42)
         .clamp(1, 500) as usize;
 
-    let _ = fs::create_dir_all(out_dir);
+    fs::create_dir_all(out_dir)?;
     let mut paths = serde_json::Map::new();
     paths.insert(
         "orig_srt".into(),
-        json!(write_srt(&out_dir.join("orig.srt"), segments, "orig", &order, max_chars).to_string_lossy()),
+        json!(write_srt(&out_dir.join("orig.srt"), segments, "orig", &order, max_chars)?.to_string_lossy()),
     );
     paths.insert(
         "trans_srt".into(),
-        json!(write_srt(&out_dir.join("trans.srt"), segments, "trans", &order, max_chars).to_string_lossy()),
+        json!(write_srt(&out_dir.join("trans.srt"), segments, "trans", &order, max_chars)?.to_string_lossy()),
     );
     paths.insert(
         "bilingual_srt".into(),
-        json!(write_srt(&out_dir.join("bilingual.srt"), segments, "bilingual", &order, max_chars).to_string_lossy()),
+        json!(write_srt(&out_dir.join("bilingual.srt"), segments, "bilingual", &order, max_chars)?.to_string_lossy()),
     );
     paths.insert(
         "bilingual_ass".into(),
-        json!(write_ass(&out_dir.join("bilingual.ass"), segments, &order, max_chars).to_string_lossy()),
+        json!(write_ass(&out_dir.join("bilingual.ass"), segments, &order, max_chars)?.to_string_lossy()),
     );
     paths.insert(
         "bilingual_vtt".into(),
-        json!(write_vtt(&out_dir.join("bilingual.vtt"), segments, &order, max_chars).to_string_lossy()),
+        json!(write_vtt(&out_dir.join("bilingual.vtt"), segments, &order, max_chars)?.to_string_lossy()),
     );
     let json_path = {
         let p = out_dir.join("segments.json");
-        let _ = fs::write(&p, serde_json::to_string(segments).unwrap_or_default());
+        fs::write(&p, serde_json::to_vec(segments)?)?;
         p
     };
     paths.insert("json".into(), json!(json_path.to_string_lossy()));
-    paths
+    Ok(paths)
 }

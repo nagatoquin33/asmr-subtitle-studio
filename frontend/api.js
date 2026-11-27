@@ -103,6 +103,25 @@ const API = {
   listModels: (silent = false) => (TAURI ? ipcCall('list_models', {}, { silent }) : apiFetch('/api/models', { silent })),
   downloadModel: (name) => (TAURI ? ipcCall('download_model', { name }) : apiFetch('/api/models/download', { method: 'POST', body: { name } })),
 
+  /* ---- 本地作品库 ---- */
+  listLibrary: () => ipcCall('library_list'),
+  libraryDetail: (workId) => ipcCall('library_detail', { workId }),
+  checkLibraryDuplicate: (paths) => ipcCall('library_check_duplicate', { paths }, { silent: true }),
+  importLibraryFolder: (path) => ipcCall('library_import_folder', { path }),
+  importLibraryPaths: (paths) => ipcCall('library_import_paths', { paths }),
+  importLibraryUrl: (url) => ipcCall('library_import_url', { url }),
+  queueLibraryTracks: (workId, tracks, sourceLang, targetLang) =>
+    ipcCall('library_queue', { workId, tracks, sourceLang, targetLang }),
+  openLibraryFolder: (workId) => ipcCall('library_open', { workId }),
+  renameLibraryWork: (workId, title) => ipcCall('library_rename', { workId, title }),
+  deleteLibraryWork: (workId) => ipcCall('library_delete', { workId }),
+  prepareLibraryPreview: (workId, trackId) => ipcCall('library_preview', { workId, trackId }),
+  libraryAsset: (...parts) => 'http://asmrmedia.localhost/library/' + parts.map(encodeURIComponent).join('/'),
+  libraryVttUrl: (workId, trackId, version) =>
+    'http://asmrmedia.localhost/library/' +
+    [workId, trackId, 'vtt'].map(encodeURIComponent).join('/') +
+    (version ? '?v=' + encodeURIComponent(String(version)) : ''),
+
   /* ---- 任务 ---- */
   listTasks: (limit = 100, offset = 0) => (TAURI ? ipcCall('list_tasks', { limit, offset }) : apiFetch(`/api/tasks?limit=${limit}`, { silent: true })),
   getTask: (id, withSegments = false) => (TAURI

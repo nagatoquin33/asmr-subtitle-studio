@@ -3,11 +3,20 @@ name = "asmr-core"
 version.workspace = true
 edition.workspace = true
 
+[[bin]]
+name = "asmr-asr-vulkan"
+path = "src/bin/asmr-asr-vulkan.rs"
+required-features = ["whisper-vulkan"]
+
+[[bin]]
+name = "unpack-tools"
+path = "src/bin/unpack-tools.rs"
+
 [features]
 # 内嵌 ffmpeg/ffprobe/yt-dlp（发布构建开启；开发构建跳过以加快链接）
 bundled-tools = []
 # 透传 whisper-rs GPU 后端（发布构建二选一启用；同时用于 ASR 元数据如实上报设备）
-whisper-vulkan = ["whisper-rs/vulkan"]
+whisper-vulkan = ["whisper-rs/vulkan", "whisper-rs/raw-api"]
 whisper-cuda = ["whisper-rs/cuda"]
 
 [dependencies]

@@ -6,32 +6,23 @@
 
 ## 快速开始
 
-**方式一（推荐）：桌面版单文件 exe（Rust + Tauri v2，`desktop/`）**
+**方式一（推荐）：Windows 安装包（Rust + Tauri v2）**
 
-```bat
-desktop\build-release.bat
-```
-
-产物 `desktop\dist\ASMR字幕工作室.exe` 是**真正的单文件**（CPU 版约 89MB，GPU 版约
-143MB，均内嵌压缩的 ffmpeg/ffprobe/yt-dlp）：拷到任何 Windows 10/11 x64 电脑双击即用。**无本地 HTTP 服务、
-无端口监听**——旧版 `[Errno 13] bind 8765 被拒`（Windows Hyper-V/WinNAT 保留端口段
-8740-8839 恰好覆盖 8765）的问题从架构上根除。首次启动自动在 exe 同级展开：
+运行 `desktop\dist\installer\*x64-setup.exe`，在向导里选择安装位置。默认按当前用户安装，可以选有写入权限的其他目录。升级时关闭工作室并运行新版安装包，沿用原安装位置即可。
 
 ```
-程序目录/
-  ASMR字幕工作室.exe
-  .env               ← LLM API Key（设置页写入，不进 git）
-  data/              任务/配置/模型（ggml 格式，从 hf-mirror.com 直连下载）
-  output/
-    {视频名}/        ← 字幕产物 + 下载的 mp4（同一文件夹，便于直接挂载使用）
-  tools/             ffmpeg / ffprobe / yt-dlp（首次启动自动解包，可自行替换升级）
+安装目录/
+  asmr-studio.exe
+  .env                   翻译 API Key（设置页写入）
+  data/                  配置、模型、任务和作品库
+    library/             已导入的作品和对应字幕
+  output/                兼容旧任务的输出目录
+  tools/                 ffmpeg、ffprobe、yt-dlp 和 Vulkan 转写组件
 ```
 
-- 实时进度/事件走 WebView IPC 通道，视频预览走自定义媒体协议（支持 Range 拖动）
-- GPU：默认 CPU 构建（零依赖）；构建机装有 Vulkan SDK 时可
-  `cargo build --release -p asmr-studio --features asmr-core/whisper-vulkan`
-  出 GPU 版（RTX 等，运行期零额外依赖）；设备 auto 时自动用 GPU，失败回退 CPU
-- 与 Python 版数据格式完全互通（tasks/segments/字幕产物同构）
+转写设备默认自动选择。具备可用 Vulkan 显卡时优先使用 GPU，显卡后端启动或运行失败时继续使用 CPU。任务详情显示实际使用的设备。已有便携版作品可以安装到原目录继续使用，也可以在关闭程序后，把原 `data/`、`output/` 和需要的 `.env` 复制到新安装目录。外部媒体仍需要留在旧任务记录的原路径。
+
+从源码生成安装包，请运行 `desktop\build-release.bat`。构建环境见 [桌面版说明](desktop/README.md)。
 
 **方式二（旧版）：Python 单文件 exe（PyInstaller，`build_exe.bat`）**
 
@@ -44,7 +35,15 @@ excludedportrange protocol=tcp` 可查），此时换 `--port` 或改用桌面�
 start.bat    & :: Python 版：双击（首次自动建 venv 装依赖），访问 http://127.0.0.1:8765
 ```
 
-桌面版开发：见 `desktop/README.md`（cargo build / e2e 测试 / GPU 构建）。
+桌面版开发见 `desktop/README.md`，包含构建、测试和打包说明。
+
+## 本地 ASMR 作品库
+
+桌面版打开后进入作品库。点「导入作品文件夹」会把文件夹及其子目录复制到 `data/library/`，包括媒体、封面、说明和已有字幕。一个文件夹对应一部作品，可以按名称或 RJ 编号搜索；同目录、同名的 UTF-8 SRT / VTT 会随曲目播放。也可以导入单个媒体文件，或粘贴 YouTube / 哔哩哔哩链接下载后入库。
+
+入库完成即可听音频或看视频。打开作品，从曲目目录点「生成字幕」，或批量生成缺失字幕。字幕任务里可以编辑字幕、导出独立文件，或把软字幕封装进 MKV、把硬字幕烧录进 MP4。生成的双语 SRT / VTT 存在作品目录的 `subtitles/` 下，作品播放器会自动加载。
+
+换安装目录时，先安装到新位置，再从原目录复制 `data/`、`output/` 和所需的 `.env`。
 
 ## 使用流程
 

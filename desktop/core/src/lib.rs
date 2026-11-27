@@ -6,9 +6,11 @@
 //! / asr（whisper.cpp）/ llm + translate（翻译协议）/ pipeline（编排）/ services（服务层）
 
 pub mod asr;
+pub mod asr_worker;
 pub mod config;
 pub mod downloader;
 pub mod ffmpeg;
+pub mod library;
 pub mod llm;
 pub mod models;
 pub mod paths;
@@ -30,6 +32,7 @@ pub fn build_core() -> anyhow::Result<Arc<Core>> {
     if !extracted.is_empty() {
         println!("[首启] 已解包工具: {}", extracted.join(", "));
     }
+    library::cleanup_stale_imports(&paths);
     let manager = tasks::TaskManager::new(paths.clone());
     let cfg = config::ConfigStore::new(paths.clone());
     let models = models::ModelStore::new(paths.clone(), tokio::runtime::Handle::current());

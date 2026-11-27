@@ -36,6 +36,10 @@ pub fn mime_for(path: &Path) -> &'static str {
         Some("ogg") | Some("oga") | Some("opus") => "audio/ogg",
         Some("wma") => "audio/x-ms-wma",
         Some("vtt") => "text/vtt; charset=utf-8",
+        Some("png") => "image/png",
+        Some("jpg" | "jpeg") => "image/jpeg",
+        Some("webp") => "image/webp",
+        Some("gif") => "image/gif",
         _ => "application/octet-stream",
     }
 }
@@ -88,10 +92,14 @@ fn error_response(status: u16, msg: &str) -> Response<Vec<u8>> {
         .unwrap()
 }
 
-/// 协议处理器：解析 /{task_id}/{kind}，按 Range 返回分片。
+/// 协议处理器：解析 /{task_id}/{kind}，按 Range 返回分片（复用阻塞线程池）。
 pub fn handle(core: Arc<Core>, request: Request<Vec<u8>>, responder: UriSchemeResponder) {
-    std::thread::spawn(move || {
-        let resp = respond(&core, &request);
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut resp = respond(&core, &request);
+        resp.headers_mut().insert(
+            "Access-Control-Allow-Origin",
+            http::HeaderValue::from_static("*"),
+        );
         responder.respond(resp);
     });
 }
@@ -101,13 +109,39 @@ fn respond(core: &Core, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     // 必须用 path() 只取路径部分——to_string() 会把 scheme/host 混进分段导致 404
     let path = request.uri().path().to_string();
     let parts: Vec<&str> = path.trim_matches('/').split('/').filter(|s| !s.is_empty()).collect();
-    if parts.len() != 2 {
-        return error_response(404, "无效的媒体路径");
-    }
-    let (task_id, kind) = (parts[0], parts[1]);
-
-    // 目标文件
-    let file = match kind {
+    let is_cover = matches!(parts.as_slice(), ["library", _, "cover"]);
+    let cache_control = if is_cover {
+        "public, max-age=3600"
+    } else {
+        "no-store"
+    };
+    let file = if parts.first() == Some(&"library") {
+        use asmr_core::library;
+        let file = match parts.as_slice() {
+            ["library", work, "cover"] => library::cover_path(&core.paths, work),
+            ["library", work, track, "media"] => library::track_path(&core.paths, work, track),
+            ["library", work, track, "preview"] => library::preview_path(&core.paths, work, track),
+            ["library", work, track, "vtt"] => {
+                return match library::vtt(&core.paths, work, track) {
+                    Ok(vtt) => http::Response::builder()
+                        .header("Content-Type", "text/vtt; charset=utf-8")
+                        .header("Cache-Control", "no-store")
+                        .body(vtt.into_bytes()).unwrap(),
+                    Err(e) => error_response(404, &e.to_string()),
+                };
+            }
+            _ => return error_response(404, "无效的作品路径"),
+        };
+        match file {
+            Ok(path) => path,
+            Err(e) => return error_response(404, &e.to_string()),
+        }
+    } else {
+        if parts.len() != 2 {
+            return error_response(404, "无效的媒体路径");
+        }
+        let (task_id, kind) = (parts[0], parts[1]);
+        match kind {
         "media" => match asmr_core::services::media_path(core, task_id) {
             Ok(p) => p,
             Err(e) => return error_response(404, &e),
@@ -126,7 +160,8 @@ fn respond(core: &Core, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
                 Err(e) => return error_response(404, &e),
             }
         }
-        _ => return error_response(404, "未知资源类型"),
+            _ => return error_response(404, "未知资源类型"),
+        }
     };
 
     let Ok(meta) = std::fs::metadata(&file) else {
@@ -144,7 +179,7 @@ fn respond(core: &Core, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
                     .header("Content-Type", &content_type)
                     .header("Content-Length", size.to_string())
                     .header("Accept-Ranges", "bytes")
-                    .header("Cache-Control", "no-store")
+                    .header("Cache-Control", cache_control)
                     .body(Vec::new())
                     .unwrap();
             }
@@ -158,7 +193,7 @@ fn respond(core: &Core, request: &Request<Vec<u8>>) -> Response<Vec<u8>> {
                     .header("Content-Type", &content_type)
                     .header("Content-Length", body.len().to_string())
                     .header("Accept-Ranges", "bytes")
-                    .header("Cache-Control", "no-store")
+                    .header("Cache-Control", cache_control)
                     .body(body)
                     .unwrap();
             }

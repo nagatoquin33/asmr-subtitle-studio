@@ -7,7 +7,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
-use serde_json::Value;
 use tokio::io::AsyncBufReadExt;
 
 use crate::ffmpeg::{CancelFlag, Ffmpeg, StageError};
@@ -79,6 +78,35 @@ pub async fn download_media(
     progress_cb: DownloadProgress,
     cancel: CancelFlag,
 ) -> Result<DownloadInfo, StageError> {
+    download_media_with_options(
+        paths,
+        ffmpeg,
+        url,
+        dest_dir,
+        height,
+        proxy,
+        cookies_from_browser,
+        false,
+        progress_cb,
+        cancel,
+    )
+    .await
+}
+
+/// 下载音视频到 dest_dir，可选同时保存缩略图作为封面。
+#[allow(clippy::too_many_arguments)]
+pub async fn download_media_with_options(
+    paths: &crate::paths::Paths,
+    ffmpeg: Option<&Ffmpeg>,
+    url: &str,
+    dest_dir: &Path,
+    height: u32,
+    proxy: &str,
+    cookies_from_browser: &str,
+    write_thumbnail: bool,
+    progress_cb: DownloadProgress,
+    cancel: CancelFlag,
+) -> Result<DownloadInfo, StageError> {
     use tokio::process::Command;
     let ytdlp = resolve_ytdlp(paths).map_err(StageError::Other)?;
     std::fs::create_dir_all(dest_dir).ok();
@@ -103,8 +131,11 @@ pub async fn download_media(
     ])
     .arg(dest_dir)
     .arg("-o")
-    .arg("%(title).60B-%(id).20s.%(ext)s")
-    .args(["--progress", "--progress-template"])
+    .arg("%(title).60B-%(id).20s.%(ext)s");
+    if write_thumbnail {
+        cmd.arg("--write-thumbnail");
+    }
+    cmd.args(["--progress", "--progress-template"])
     .arg("download:@PROG@ %(progress.downloaded_bytes)s %(progress.total_bytes)s %(progress.total_bytes_estimate)s %(progress.speed)s")
     .args(["--print", "pre_process:@META_DUR@ %(duration)s"])
     .args(["--print", "pre_process:@META_TITLE@ %(title)s"])
@@ -128,6 +159,11 @@ pub async fn download_media(
     }
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000);
+
+    cmd.kill_on_drop(true);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| StageError::Other(anyhow!("启动 yt-dlp 失败: {}", e)))?;
 
     // 目录字节监控：fragment/合并/重试模式下 yt-dlp 的模板进度行不可靠，
     // 直接采样任务目录大小作为下载进度主来源（@PROG@ 行仅补充速度与总量）。
@@ -159,10 +195,6 @@ pub async fn download_media(
             }
         });
     }
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| StageError::Other(anyhow!("启动 yt-dlp 失败: {}", e)))?;
 
     let stdout = child.stdout.take().expect("stdout piped");
     let stderr = child.stderr.take();

@@ -40,6 +40,26 @@ pub fn is_canceled(err: &StageError) -> bool {
     matches!(err, StageError::Canceled(_))
 }
 
+fn utf8_tail(text: &str, max_bytes: usize) -> &str {
+    let mut start = text.len().saturating_sub(max_bytes);
+    while !text.is_char_boundary(start) {
+        start += 1;
+    }
+    &text[start..]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::utf8_tail;
+
+    #[test]
+    fn ffmpeg_error_tail_keeps_utf8_boundaries() {
+        assert_eq!(utf8_tail("文字abc", 7), "字abc");
+        assert_eq!(utf8_tail("文字abc", 20), "文字abc");
+        assert_eq!(utf8_tail("文字abc", 0), "");
+    }
+}
+
 pub struct Ffmpeg {
     ffmpeg: PathBuf,
     ffprobe: PathBuf,
@@ -103,7 +123,7 @@ impl Ffmpeg {
             .context("启动 ffprobe 失败")?;
         if !out.status.success() {
             let err = String::from_utf8_lossy(&out.stderr);
-            return Err(anyhow!("ffprobe 失败: {}", &err[err.len().saturating_sub(300)..]));
+            return Err(anyhow!("ffprobe 失败: {}", utf8_tail(&err, 300)));
         }
         let data: Value = serde_json::from_slice(&out.stdout).context("解析 ffprobe 输出失败")?;
         let duration = data
@@ -170,8 +190,7 @@ impl Ffmpeg {
                     let mut file = stderr;
                     if file.read_to_end(&mut buf).await.is_ok() {
                         let text = String::from_utf8_lossy(&buf);
-                        let start = text.len().saturating_sub(500);
-                        tail = text[start..].to_string();
+                        tail = utf8_tail(&text, 500).to_string();
                     }
                 }
                 tail

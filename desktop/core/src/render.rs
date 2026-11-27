@@ -22,10 +22,6 @@ fn escape_ass_filename(name: &str) -> String {
     name.replace('\'', "'\\''")
 }
 
-struct Spawned {
-    child: Command,
-}
-
 fn build_cmd(ff: &Ffmpeg, dir: &Path, args: &[String]) -> Command {
     let mut cmd = Command::new(ff.path());
     cmd.args(args)

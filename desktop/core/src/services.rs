@@ -54,7 +54,7 @@ fn walk_media_files(dir: &Path, out: &mut Vec<PathBuf>, skipped: &mut u64, depth
     }
 }
 
-fn validated_langs(mut source_lang: String, mut target_lang: String) -> (String, String) {
+pub(crate) fn validated_langs(mut source_lang: String, mut target_lang: String) -> (String, String) {
     if !VALID_LANGS.contains(&source_lang.as_str()) {
         source_lang = "auto".into();
     }
@@ -195,11 +195,11 @@ pub fn delete_task(core: &Core, task_id: &str) -> Result<(), String> {
 pub fn open_task_folder(core: &Core, task_id: &str) -> Result<String, String> {
     let task = core.manager.get(task_id).ok_or("任务不存在")?;
     let mut dir = core.paths.tasks().join(task_id);
-    if let Some(out) = &task.output_dir {
-        let out = PathBuf::from(out);
-        if out.exists() {
-            dir = out;
-        }
+    if let Some(out) = crate::library::task_output_dir(&core.paths, &task)
+        .or_else(|| task.output_dir.as_ref().map(PathBuf::from))
+        .filter(|out| out.is_dir())
+    {
+        dir = out;
     }
     let _ = std::fs::create_dir_all(&dir);
     let path = dir.to_string_lossy().to_string();
@@ -224,7 +224,10 @@ pub fn open_task_folder(core: &Core, task_id: &str) -> Result<String, String> {
 pub fn read_output_file(core: &Core, task_id: &str, kind: &str) -> Result<(PathBuf, Vec<u8>), String> {
     let fname = crate::subtitles::output_filename(kind).ok_or(format!("未知类型: {}", kind))?;
     let task = core.manager.get(task_id).ok_or("任务不存在")?;
-    let mut candidates: Vec<PathBuf> = Vec::new();
+    let mut candidates = Vec::new();
+    if let Some(dir) = crate::library::task_output_dir(&core.paths, &task) {
+        candidates.push(dir.join(fname));
+    }
     if let Some(outputs) = task.outputs.as_object() {
         if let Some(p) = outputs.get(kind).and_then(|v| v.as_str()) {
             candidates.push(PathBuf::from(p));
@@ -246,6 +249,9 @@ pub fn read_output_file(core: &Core, task_id: &str, kind: &str) -> Result<(PathB
 /// 任务的媒体文件路径（流媒体协议用）。
 pub fn media_path(core: &Core, task_id: &str) -> Result<PathBuf, String> {
     let task = core.manager.get(task_id).ok_or("任务不存在")?;
+    if let Some((work, track)) = crate::library::task_keys(&task) {
+        return crate::library::track_path(&core.paths, work, track).map_err(|e| e.to_string());
+    }
     task.media
         .path
         .map(PathBuf::from)
@@ -257,7 +263,10 @@ pub fn media_path(core: &Core, task_id: &str) -> Result<PathBuf, String> {
 pub fn output_path(core: &Core, task_id: &str, kind: &str) -> Result<PathBuf, String> {
     let fname = crate::subtitles::output_filename(kind).ok_or(format!("未知类型: {}", kind))?;
     let task = core.manager.get(task_id).ok_or("任务不存在")?;
-    let mut candidates: Vec<PathBuf> = Vec::new();
+    let mut candidates = Vec::new();
+    if let Some(dir) = crate::library::task_output_dir(&core.paths, &task) {
+        candidates.push(dir.join(fname));
+    }
     if let Some(outputs) = task.outputs.as_object() {
         if let Some(p) = outputs.get(kind).and_then(|v| v.as_str()) {
             candidates.push(PathBuf::from(p));
@@ -307,7 +316,8 @@ pub fn export_all_to(core: &Core, task_id: &str, dir: &Path) -> Result<u64, Stri
     let segments = read_segments(core, task_id)?;
     std::fs::create_dir_all(dir).map_err(|e| format!("创建导出目录失败: {}", e))?;
     let out_cfg = core.cfg.get().get("output").cloned().unwrap_or(json!({}));
-    let outputs = crate::subtitles::write_all(dir, &segments, &out_cfg);
+    let outputs = crate::subtitles::write_all(dir, &segments, &out_cfg)
+        .map_err(|e| format!("导出字幕失败：{e}"))?;
     Ok(outputs.len() as u64)
 }
 

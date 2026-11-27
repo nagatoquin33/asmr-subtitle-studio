@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod library_commands;
 mod stream;
 
 use std::sync::Arc;
@@ -61,6 +62,12 @@ fn main() {
             })?;
             app.manage(core.clone());
 
+            // 将界面偏好与 WebView 缓存放进同一份便携数据目录。
+            let window = app.config().app.windows.first().ok_or("缺少主窗口配置")?;
+            tauri::WebviewWindowBuilder::from_config(app, window)?
+                .data_directory(core.paths.data().join("webview"))
+                .build()?;
+
             // 事件桥：core 广播 → 前端 listen('task-events')
             let app_handle = app.handle().clone();
             let mut rx = core.manager.subscribe();
@@ -87,6 +94,17 @@ fn main() {
             stream::handle(state.inner().clone(), request, responder);
         })
         .invoke_handler(tauri::generate_handler![
+            library_commands::library_list,
+            library_commands::library_detail,
+            library_commands::library_check_duplicate,
+            library_commands::library_import_folder,
+            library_commands::library_import_url,
+            library_commands::library_import_paths,
+            library_commands::library_queue,
+            library_commands::library_preview,
+            library_commands::library_open,
+            library_commands::library_rename,
+            library_commands::library_delete,
             commands::health,
             commands::get_config,
             commands::save_config,

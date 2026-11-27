@@ -42,6 +42,10 @@ impl Paths {
     pub fn data(&self) -> PathBuf {
         self.root.join("data")
     }
+    pub fn library(&self) -> PathBuf {
+        self.data().join("library")
+    }
+
     pub fn tasks(&self) -> PathBuf {
         self.data().join("tasks")
     }
@@ -71,7 +75,7 @@ impl Paths {
     }
 
     pub fn ensure_dirs(&self) -> Result<()> {
-        for p in [self.data(), self.tasks(), self.models(), self.output()] {
+        for p in [self.data(), self.tasks(), self.models(), self.output(), self.library()] {
             fs::create_dir_all(&p).with_context(|| format!("创建目录失败: {}", p.display()))?;
         }
         Ok(())

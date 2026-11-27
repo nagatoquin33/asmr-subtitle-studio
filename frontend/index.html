@@ -9,6 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path fill='%23f5b56b' d='M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1H5.1A7 7 0 0 1 12 5a7 7 0 0 1 6.9 6H17a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z'/></svg>">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="ux.css">
+  <link rel="stylesheet" href="library.css">
 </head>
 <body>
 
@@ -27,6 +28,10 @@
       <h1>ASMR 字幕工作室</h1>
       <span class="brand-sub">本地全流程 · 识别 → 翻译 → 审校 → 双语字幕</span>
     </div>
+    <nav id="workspaceNav" class="workspace-nav" aria-label="工作区" hidden>
+      <button type="button" data-workspace="library" aria-pressed="true">作品库</button>
+      <button type="button" data-workspace="tasks" aria-pressed="false">字幕任务</button>
+    </nav>
     <div class="topbar-right">
       <span id="modelChip" class="model-chip mono" hidden></span>
       <div id="health" class="health" title="正在检查后端状态…">
@@ -55,6 +60,81 @@
     <div class="sb-actions" id="sbActions"></div>
     <button type="button" class="sb-close" id="btnSetupClose" title="本次运行不再提示" aria-label="隐藏提示">✕</button>
   </div>
+
+  <main id="libraryView" class="library-view" hidden>
+    <section class="lib-head">
+      <div class="lib-heading">
+        <h2>ASMR 作品库</h2>
+        <p id="libraryCount" role="status">正在读取作品…</p>
+      </div>
+      <div class="lib-actions lib-import-actions">
+        <button type="button" class="btn btn-ghost" id="libraryFile">导入文件</button>
+        <button type="button" class="btn btn-ghost" id="libraryLink">解析视频链接</button>
+        <button type="button" class="btn btn-primary" id="libraryFolder">导入作品文件夹</button>
+      </div>
+    </section>
+    <form id="libraryLinkForm" class="lib-link" hidden>
+      <label for="libraryUrl">YouTube / 哔哩哔哩</label>
+      <textarea id="libraryUrl" rows="2" required placeholder="粘贴视频链接，每行一个" spellcheck="false"></textarea>
+      <button class="btn btn-primary" id="libraryDownload">下载并入库</button>
+    </form>
+    <p class="lib-message" id="libraryMessage" role="status" hidden></p>
+    <section id="libraryBrowse">
+      <div class="lib-browse-tools">
+        <label class="lib-search-field">
+          <span class="lib-search-icon" aria-hidden="true"></span>
+          <input class="lib-search" id="librarySearch" type="search" placeholder="搜索作品名或 RJ 编号" aria-label="搜索作品名或 RJ 编号">
+        </label>
+        <label class="lib-library-sort" for="librarySort">排序
+          <select id="librarySort">
+            <option value="recent">最近导入</option>
+            <option value="title">作品名</option>
+            <option value="rj">RJ 编号</option>
+          </select>
+        </label>
+      </div>
+      <div id="libraryGrid" class="lib-grid"></div>
+    </section>
+    <section id="libraryDetail" hidden></section>
+  </main>
+
+  <aside id="libraryPlayer" class="lib-player" aria-label="作品播放器" hidden>
+    <div id="librarySubtitleDrawer" class="lib-sub-drawer" aria-label="滚动字幕列表" hidden>
+      <div class="lib-sub-drawer-head">
+        <span>字幕时间轴</span>
+        <button type="button" id="libraryCloseDrawer" class="lib-icon-button" title="收起字幕列表" aria-label="收起字幕列表">×</button>
+      </div>
+      <div id="librarySubtitleListBody" class="lib-sub-drawer-body"></div>
+    </div>
+    <p id="libraryCaption" class="lib-caption" hidden></p>
+    <video id="libraryMedia" preload="metadata" playsinline crossorigin="anonymous" hidden></video>
+    <div class="lib-player-bar">
+      <div class="lib-now">
+        <button type="button" id="libraryNowCover" class="lib-mini-cover" aria-label="打开正在播放的作品"></button>
+        <div><strong id="libraryNowTitle"></strong><small id="libraryNowWork"></small></div>
+      </div>
+      <div class="lib-transport">
+        <button type="button" id="libraryPrev" class="lib-icon-button" title="上一曲（[）" aria-label="上一曲">⏮</button>
+        <button type="button" id="libraryToggle" class="lib-icon-button lib-play-button" title="播放（Space）" aria-label="播放">▶</button>
+        <button type="button" id="libraryNext" class="lib-icon-button" title="下一曲（]）" aria-label="下一曲">⏭</button>
+      </div>
+      <div class="lib-seek">
+        <span id="libraryElapsed">0:00</span>
+        <input type="range" id="librarySeek" min="0" max="0" value="0" step="0.1" aria-label="播放进度" disabled>
+        <span id="libraryDuration">0:00</span>
+      </div>
+      <div class="lib-player-options">
+        <button type="button" id="libraryLoop" class="lib-icon-button" title="循环模式：顺序播放" aria-label="循环模式">顺序</button>
+        <button type="button" id="libraryRate" class="lib-icon-button" title="播放倍速" aria-label="播放倍速">1×</button>
+        <button type="button" id="librarySleep" class="lib-icon-button" title="睡眠定时：关闭" aria-label="睡眠定时">定时</button>
+        <button type="button" id="libraryShowVideo" class="lib-icon-button" aria-expanded="false" hidden>画面</button>
+        <button type="button" id="libraryShowCaption" class="lib-icon-button" aria-pressed="true" disabled>字幕</button>
+        <button type="button" id="libraryShowDrawer" class="lib-icon-button" aria-pressed="false" title="展开可点击跳转的字幕时间轴" disabled>台本</button>
+        <input type="range" id="libraryVolume" min="0" max="1" step="0.01" value="0.8" aria-label="音量">
+        <button type="button" id="libraryClosePlayer" class="lib-icon-button" title="关闭播放器" aria-label="关闭播放器">×</button>
+      </div>
+    </div>
+  </aside>
 
   <!-- ======= 主布局 ======= -->
   <main id="layout">
@@ -331,9 +411,9 @@
             </label>
             <label class="cfg-field">设备
               <select id="cfgDevice">
-                <option value="auto">auto</option>
-                <option value="cpu">cpu</option>
-                <option value="gpu">gpu</option>
+                <option value="auto">自动（优先 GPU）</option>
+                <option value="cpu">仅 CPU</option>
+                <option value="gpu">优先 GPU</option>
               </select>
             </label>
             <label class="cfg-field span-2">计算精度
@@ -535,5 +615,6 @@
 
   <script src="api.js" defer></script>
   <script src="app.js" defer></script>
+  <script src="library.js" defer></script>
 </body>
 </html>

@@ -315,9 +315,14 @@ async function refreshHealth() {
     state.health = h;
     const gpuName = h && h.gpu && h.gpu.available ? h.gpu.name : null;
     const ffmpegOk = !!(h && h.ffmpeg);
-    dot.className = 'h-dot ' + (ffmpegOk ? (gpuName ? 'ok' : 'warn') : 'warn');
-    text.textContent = gpuName ? `GPU 就绪 · ${gpuName}` : (ffmpegOk ? '后端已连接' : '后端已连接（缺 ffmpeg）');
-    wrap.title = `后端 v${(h && h.version) || '?'} · ffmpeg：${ffmpegOk ? '可用' : '未检测到'} · GPU：${gpuName || '不可用（CPU 模式）'}`;
+    const asrMode = h?.vulkan_ready
+      ? (gpuName ? `Vulkan GPU · ${gpuName}` : 'Vulkan GPU 就绪')
+      : (h?.asr_vulkan_installed ? 'CPU 转写（自动回退）' : 'CPU 转写');
+    dot.className = 'h-dot ' + (ffmpegOk ? 'ok' : 'warn');
+    text.textContent = ffmpegOk ? (API.isDesktop() ? asrMode : '后端已连接') : '后端已连接（缺 ffmpeg）';
+    wrap.title = `后端 v${h?.version || '?'} · ffmpeg：${ffmpegOk ? '可用' : '未检测到'}` +
+      (gpuName ? ` · 显卡：${gpuName}` : '') +
+      (h?.vulkan_reason && !h?.vulkan_ready ? ` · ${h.vulkan_reason}` : '');
   } catch (_) {
     state.health = null;
     dot.className = 'h-dot bad';
@@ -1122,6 +1127,8 @@ function updateDetailHead(t) {
   if (t.media && t.media.duration) addChip('时长', fmtDuration(t.media.duration));
   if (t.media && t.media.size) addChip('大小', fmtBytes(t.media.size));
   if (t.asr && t.asr.model) addChip('ASR', t.asr.model);
+  if (t.asr?.device) addChip('转写设备', String(t.asr.device).toUpperCase());
+  if (t.asr?.warning) addChip('转写说明', t.asr.warning);
   if (t.options) addChip('语言', `${t.options.source_lang || 'auto'} → ${t.options.target_lang || 'zh'}`);
   const dt = fmtDT(t.created_at);
   if (dt) addChip('创建', dt);
@@ -1602,7 +1609,10 @@ function applySegmentsFromServer(segments) {
   if (state.segPage > pages) state.segPage = pages;
   renderSegments();
   const t = state.tasks.get(state.selectedId);
-  if (t) updateDetailHead(t);
+  if (t) {
+    updateDetailHead(t);
+    window.AsmrLibrary?.reloadCaptionsForTask?.(t);
+  }
 }
 
 function findSeg(index) {
@@ -1633,6 +1643,7 @@ async function maybeSave(input) {
     setTimeout(() => input.classList.remove('saved'), 1300);
     const seg = findSeg(index);
     if (seg) seg.translated = val;
+    window.AsmrLibrary?.reloadCaptionsForTask?.(state.tasks.get(id));
   } catch (_) {
     input.value = orig; // 失败还原（toast 已由封装弹出）
   } finally {
@@ -1665,6 +1676,7 @@ async function retranslateRow(btn) {
       if (cur) cur.replaceWith(buildSegRow(seg));
     }
     toast(`第 ${index + 1} 句重翻完成`, 'success');
+    window.AsmrLibrary?.reloadCaptionsForTask?.(state.tasks.get(id));
   } catch (_) {
     // toast 已由封装弹出
   } finally {
@@ -2332,14 +2344,17 @@ function setupGlobalShortcuts() {
       e.preventDefault();
       closeSettings();
       closeShortcuts();
-      $id('queueSearch').focus();
-      $id('queueSearch').select();
+      const search = $id('libraryView').hidden || $id('libraryBrowse').hidden ? $id('queueSearch') : $id('librarySearch');
+      if ($id('libraryView').hidden || !$id('libraryBrowse').hidden) {
+        search.focus();
+        search.select();
+      }
       return;
     }
     // Ctrl+F：搜字幕
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
       e.preventDefault();
-      if (!state.selectedId) return;
+      if (!state.selectedId || !$id('libraryView').hidden) return;
       $id('segSearch').focus();
       $id('segSearch').select();
       return;
@@ -3011,7 +3026,8 @@ function setupDesktopIntegration() {
         dz.classList.remove('dragover');
       } else if (payload.type === 'drop') {
         dz.classList.remove('dragover');
-        addPathsFromDesktop(payload.paths || []);
+        if (window.AsmrLibrary) window.AsmrLibrary.importPaths(payload.paths || []);
+        else addPathsFromDesktop(payload.paths || []);
       }
     });
   } catch (err) {

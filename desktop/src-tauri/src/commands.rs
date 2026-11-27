@@ -44,21 +44,36 @@ fn burn_unregister(task_id: &str) {
 // ---------- 健康 ----------
 
 #[tauri::command]
-pub fn health(core: CoreState) -> Value {
-    let ffmpeg = asmr_core::ffmpeg::Ffmpeg::resolve(&core.paths).ok();
-    let (gpu_name, gpu_available) = match asmr_core::ffmpeg::gpu_info() {
-        Some(name) => (Some(name), true),
-        None => (None, false),
-    };
-    json!({
-        "ok": true,
-        "app": "asmr-studio",
-        "version": asmr_core::config::APP_VERSION,
-        "ffmpeg": ffmpeg.is_some(),
-        "ffmpeg_version": ffmpeg.as_ref().and_then(|f| f.version()),
-        "ffmpeg_path": ffmpeg.as_ref().map(|f| f.path().to_string_lossy().to_string()),
-        "gpu": {"available": gpu_available, "name": gpu_name},
+pub async fn health(core: CoreState<'_>) -> Result<Value, String> {
+    let paths = core.paths.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let ffmpeg = asmr_core::ffmpeg::Ffmpeg::resolve(&paths).ok();
+        let vulkan = asmr_core::asr_worker::probe_vulkan(&paths);
+        let (gpu_name, gpu_available) = if vulkan.available {
+            (vulkan.device_name.clone(), true)
+        } else if !vulkan.installed {
+            match asmr_core::ffmpeg::gpu_info() {
+                Some(name) => (Some(name), true),
+                None => (None, false),
+            }
+        } else {
+            (None, false)
+        };
+        json!({
+            "ok": true,
+            "app": "asmr-studio",
+            "version": asmr_core::config::APP_VERSION,
+            "ffmpeg": ffmpeg.is_some(),
+            "ffmpeg_version": ffmpeg.as_ref().and_then(|f| f.version()),
+            "ffmpeg_path": ffmpeg.as_ref().map(|f| f.path().to_string_lossy().to_string()),
+            "gpu": {"available": gpu_available, "name": gpu_name},
+            "asr_vulkan_installed": vulkan.installed,
+            "vulkan_ready": vulkan.available,
+            "vulkan_reason": vulkan.reason,
+        })
     })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 // ---------- 配置 ----------
@@ -129,6 +144,7 @@ pub fn app_paths(core: CoreState<'_>) -> Value {
     json!({
         "root": p.root.to_string_lossy().to_string(),
         "data": p.data().to_string_lossy().to_string(),
+        "library": p.library().to_string_lossy().to_string(),
         "output": p.output().to_string_lossy().to_string(),
         "models": p.models().to_string_lossy().to_string(),
         "tasks": p.tasks().to_string_lossy().to_string(),

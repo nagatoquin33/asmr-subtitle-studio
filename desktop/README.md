@@ -1,6 +1,6 @@
 # ASMR 字幕工作室 · 桌面版（Rust + Tauri v2）
 
-Python/FastAPI 版的重写：**单 exe、无本地 HTTP 服务、无端口监听**（彻底规避 Windows
+Python/FastAPI 版的重写：**Windows 安装包、无本地 HTTP 服务、无端口监听**（彻底规避 Windows
 保留端口段导致的 `[Errno 13] bind` 失败——Hyper-V/WinNAT 会随机保留 8740-8839 等端口段，
 connect 探测不到但 bind 会被拒）。
 
@@ -16,7 +16,8 @@ desktop/
     ffmpeg.rs           ffmpeg/ffprobe 子进程封装（进度/取消）
     downloader.rs       yt-dlp 子进程封装（模板标记行解析进度）
     models.rs           ggml 模型下载（hf-mirror → huggingface，断点续传）+ VAD 模型
-    asr.rs              whisper.cpp（whisper-rs）：VAD auto 重试、GPU 回退、幻觉标记
+    asr.rs              whisper.cpp 转写、VAD 重试与幻觉过滤
+    asr_worker.rs       按需启动 Vulkan 转写组件，失败时使用主程序内的 CPU 后端
     llm.rs / translate.rs  OpenAI 兼容客户端 + N|译文 批处理协议（完整移植）
     pipeline.rs         阶段编排（断点续跑）+ 单句编辑/重翻
     services.rs         服务层（任务创建/生命周期/导出）
@@ -25,16 +26,21 @@ desktop/
   embedded/             zstd 压缩的 ffmpeg/ffprobe/yt-dlp（bundled-tools 特性内嵌）
 ```
 
+## 作品库
+
+- `data/library/<作品编号>/work.json` 保存作品名、RJ 编号以及相对曲目路径。原文件的副本及子目录保存在 `media/`。导入完整后，作品才出现在库里。
+- `subtitles/<曲目编号>/` 保存工作室生成的独立字幕。现有同名或带语言后缀（`.ja` / `.zh` / `.bilingual` 等）的 SRT / VTT / ASS / LRC 字幕可直接随曲目播放（自动识别 UTF-8 / UTF-16 / Shift-JIS / GB18030），生成后优先加载新 VTT。视频的软字幕和硬字幕仍从字幕任务导出。
+- 作品入库时只复制或下载，不建立字幕任务。需要时从作品页单条添加，或批量处理缺失字幕。播放和字幕工作区共用作品媒体。
+- `data/webview/` 保存桌面界面偏好和 WebView2 本地数据。清理该目录会重置界面偏好，作品、字幕和模型各有自己的目录。
+
 ## 关键设计
 
 - **零端口**：前端(WebView2) ↔ 后端(Rust) 全部走 Tauri IPC（invoke/listen），媒体流走
   自定义协议 `http://asmrmedia.localhost/{task_id}/{kind}`（支持 Range，视频可拖动）。
-- **单 exe 首启自解包**：`bundled-tools` 特性把 ffmpeg.exe/ffprobe.exe/yt-dlp.exe
-  zstd 压缩内嵌（~80MB），首次启动解包到 exe 同级 `tools/`（已存在则不覆盖，
-  用户可自行升级 ffmpeg）。数据目录 `data/`、`output/`、`.env` 同级生成。
+- **工具直装部署**：NSIS 安装包将 `ffmpeg`/`ffprobe`/`yt-dlp` 与 Vulkan 转写组件直接作为安装包资源以 LZMA 压缩部署到 `tools/`，主程序体积小、冷启动快，升级时自动更新工具（便携单文件构建仍保留 `--features bundled-tools`）。数据目录 `data/`、`output/`、`.env` 同级生成。
 - **ASR 换引擎**：faster-whisper(CTranslate2) → whisper.cpp(ggml)。模型从
   hf-mirror.com 直连下载（ggml-small/medium/large-v3/large-v3-turbo + silero VAD）。
-  设备 auto/cpu/gpu；gpu 走编译期后端（vulkan），失败自动回退 CPU。
+  自动和优先 GPU 会在可复用的独立 Vulkan 进程中运行（连续队列复用显存模型、空闲 90 秒自动释放，支持 N/A/I 跨厂商 Vulkan 探测），不可用或失败时主程序继续用 CPU。仅 CPU 会直接在主程序中识别。
   compute_type 兼容保留（ggml 量化由模型文件决定）。
 - **视频与字幕同目录**：URL 下载的视频在任务完成后自动移入 `output/{视频名}/`
   与字幕同文件夹（`pipeline.move_video_to_output`，默认开启）；
@@ -89,32 +95,17 @@ cargo run -p asmr-core --example asr_min -- <wav>      # whisper 隔离测试
 `app.js` / `api.js` / `style.css` / `ux.css` 都会自动触发重编，不会出现「改了前端但
 exe 里还是旧界面」。
 
-## GPU（Vulkan）构建
+## Windows 安装包
 
-GPU 版在编码器上走 Vulkan（RTX 实测 ~1.7x，长音频收益更大），构建机准备：
-
-1. `scoop install vulkan`（用户级安装 Vulkan SDK，无需管理员；或官方安装器）
-2. 必须在 **vcvars64 + Ninja 生成器**环境构建（ggml 的 vulkan-shaders-gen
-   嵌套 cmake 在 VS 生成器下找不到编译器）：
+在 Windows x64 上安装 Rust MSVC、Visual Studio Build Tools、CMake、Ninja、LLVM、Node.js 和 Vulkan SDK，然后运行：
 
 ```bat
-desktop\build-release.bat gpu
+desktop\build-release.bat
 ```
 
-运行期零额外依赖（显卡驱动自带 Vulkan runtime）；无 Vulkan 的机器上
-whisper.cpp 自动回退 CPU。设备选 auto 即自动用 GPU。
+脚本依次构建 Vulkan 转写组件和主程序，用 Tauri 的 NSIS 向导打包，产物在 `desktop\dist\installer\`。可通过 `VULKAN_SDK`、`VS_VCVARS`、`LIBCLANG_PATH` 和 `ASMR_BUILD_ROOT` 指定本机路径。构建目录应使用短路径，例如 `D:\asmr-build`，避免 Windows 工具的路径长度限制。用户端使用显卡驱动提供的 Vulkan 运行库，构建用的 SDK 只装在构建机。
 
-已知上游问题：whisper-rs 0.16 的 `set_abort_callback_safe` 存在类型不匹配
-（UB，随机 "failed to encode"），`asr.rs` 已改用原生接口正确接线。
-
-## 发布
-
-```bat
-desktop\build-release.bat          &:: CPU 通用版 dist\ASMR字幕工作室.exe（~89MB）
-desktop\build-release.bat gpu      &:: Vulkan GPU 版 dist\ASMR字幕工作室-GPU.exe（~143MB）
-```
-
-拷到任何 Win10/11 x64 机器双击即用（WebView2 系统自带；无需 Python/驱动/端口）。
+发布新版时一起递增 Cargo 工作区和 Tauri 配置的版本号，沿用应用标识 `local.asmr.studio`。安装器记住原安装位置，覆盖更新程序和 Vulkan 组件。应用把作品、配置和模型保存在安装目录，正常升级沿用这份数据。
 
 ## 已修复的关键问题（迭代记录）
 

@@ -1,0 +1,24 @@
+{
+  "bundle": {
+    "targets": [
+      "nsis"
+    ],
+    "resources": {
+      "build/asmr-asr-vulkan.exe": "tools/asmr-asr-vulkan.exe",
+      "build/tools/ffmpeg/bin/ffmpeg.exe": "tools/ffmpeg/bin/ffmpeg.exe",
+      "build/tools/ffmpeg/bin/ffprobe.exe": "tools/ffmpeg/bin/ffprobe.exe",
+      "build/tools/yt-dlp/yt-dlp.exe": "tools/yt-dlp/yt-dlp.exe"
+    },
+    "windows": {
+      "allowDowngrades": false,
+      "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser",
+        "languages": [
+          "SimpChinese",
+          "English"
+        ]
+      }
+    }
+  }
+}

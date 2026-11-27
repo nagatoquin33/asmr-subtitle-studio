@@ -115,7 +115,7 @@ fn subtitles_write_all_roundtrip() {
         json!({"index": 0, "start": 0.0, "end": 2.5, "text": "こんにちは", "translated": "你好"}),
         json!({"index": 1, "start": 3.0, "end": 5.25, "text": "Good night", "translated": "晚安"}),
     ];
-    let outputs = asmr_core::subtitles::write_all(&dir, &segments, &json!({"bilingual_order": "trans_first", "max_line_chars": 42}));
+    let outputs = asmr_core::subtitles::write_all(&dir, &segments, &json!({"bilingual_order": "trans_first", "max_line_chars": 42})).unwrap();
     // 6 个产物全生成
     for k in ["orig_srt", "trans_srt", "bilingual_srt", "bilingual_ass", "bilingual_vtt", "json"] {
         let p = outputs.get(k).and_then(|v| v.as_str()).unwrap();

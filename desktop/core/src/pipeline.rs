@@ -200,12 +200,8 @@ async fn stage_extract(core: &Core, ctx: &mut StageCtx) -> Result<(), StageError
         t.progress = 0.05;
         t.message = "正在探测媒体信息…".into();
     });
-    let media_path = core
-        .manager
-        .get(&ctx.task_id)
-        .and_then(|t| t.media.path)
-        .ok_or_else(|| StageError::Other(anyhow::anyhow!("任务缺少媒体文件路径")))?;
-    let media_path = PathBuf::from(media_path);
+    let media_path = crate::services::media_path(core, &ctx.task_id)
+        .map_err(|e| StageError::Other(anyhow::anyhow!(e)))?;
     let ff = ffmpeg_mod::Ffmpeg::resolve(core.paths()).map_err(StageError::Other)?;
     let probe = ff.probe(&media_path).await.map_err(StageError::Other)?;
     let duration = probe.duration;
@@ -214,6 +210,7 @@ async fn stage_extract(core: &Core, ctx: &mut StageCtx) -> Result<(), StageError
         let has_video = probe.has_video;
         let size = probe.size;
         core.manager.update(&ctx.task_id, true, EventKind::Progress, |t| {
+            t.media.path = Some(media_path.to_string_lossy().into_owned());
             t.media.duration = Some(duration);
             t.media.has_video = Some(has_video);
             t.media.size = Some(size);
@@ -370,10 +367,7 @@ async fn stage_asr(core: &Core, ctx: &mut StageCtx) -> Result<(), StageError> {
         source_lang,
         vad: vad_mode,
     };
-    let outcome = tokio::task::spawn_blocking(move || asr::transcribe(opts, &wav, progress, cancel))
-        .await
-        .map_err(|e| StageError::Other(anyhow::anyhow!("识别线程异常: {}", e)))?
-        .map_err(StageError::Other)?;
+    let outcome = crate::asr_worker::transcribe(core.paths(), opts, wav, progress, cancel).await?;
 
     let n = outcome.segments.len();
     ctx.segments = Some(outcome.segments.clone());
@@ -534,16 +528,18 @@ async fn stage_write(core: &Core, ctx: &mut StageCtx) -> Result<(), StageError> 
     })?;
     // 重试/续跑时复用已记录的产物目录（避免另建带后缀的新文件夹，
     // 保证「视频与字幕同目录」在重跑后依然成立）；目录被用户删掉则重新规划
-    let out_dir = match task.output_dir.as_ref() {
-        Some(d) if Path::new(d).is_dir() => PathBuf::from(d),
-        _ => plan_output_dir(core.paths(), &ctx.task_id, &task.name),
-    };
+    let out_dir = crate::library::task_output_dir(&core.paths, &task)
+        .unwrap_or_else(|| match task.output_dir.as_ref() {
+            Some(d) if Path::new(d).is_dir() => PathBuf::from(d),
+            _ => plan_output_dir(core.paths(), &ctx.task_id, &task.name),
+        });
     let segments = ctx.segments.clone().unwrap_or_default();
-    let outputs = subtitles::write_all(&out_dir, &segments, &ctx.cfg.get("output").cloned().unwrap_or(json!({})));
-    let _ = std::fs::write(
+    let outputs = subtitles::write_all(&out_dir, &segments, &ctx.cfg.get("output").cloned().unwrap_or(json!({})))
+        .map_err(|e| StageError::Other(anyhow::anyhow!("保存字幕失败：{e}")))?;
+    std::fs::write(
         ctx.task_dir.join("segments.json"),
         serde_json::to_string(&segments).unwrap_or_default(),
-    );
+    ).map_err(|e| StageError::Other(anyhow::anyhow!("保存字幕段失败：{e}")))?;
     ctx.out_dir = Some(out_dir.clone());
     ctx.outputs = outputs.clone();
 
@@ -699,16 +695,14 @@ fn rewrite_outputs(
     core: &Core,
     task: &crate::tasks::Task,
     segments: &[Value],
-) -> (PathBuf, serde_json::Map<String, Value>) {
-    let out_dir = task
-        .output_dir
-        .as_ref()
-        .map(PathBuf::from)
+) -> Result<(PathBuf, serde_json::Map<String, Value>), String> {
+    let out_dir = crate::library::task_output_dir(&core.paths, task)
+        .or_else(|| task.output_dir.as_ref().map(PathBuf::from))
         .unwrap_or_else(|| core.paths.tasks().join(&task.id).join("output"));
     let out_cfg = core.cfg.get().get("output").cloned().unwrap_or(json!({}));
-    let outputs = subtitles::write_all(&out_dir, segments, &out_cfg);
-    // 把产物路径回填（output 目录可能首次生成）
-    (out_dir, outputs)
+    let outputs = subtitles::write_all(&out_dir, segments, &out_cfg)
+        .map_err(|e| format!("保存字幕失败：{e}"))?;
+    Ok((out_dir, outputs))
 }
 
 pub fn update_segment_text(core: &Core, task_id: &str, index: usize, translated: &str) -> Result<Value, String> {
@@ -726,7 +720,7 @@ pub fn update_segment_text(core: &Core, task_id: &str, index: usize, translated:
         .manager
         .get(task_id)
         .ok_or("任务不存在")?;
-    let _ = rewrite_outputs(core, &task, &segments);
+    rewrite_outputs(core, &task, &segments)?;
     let translated_n = segments.iter().filter(|s| seg_translated(s)).count();
     core.manager.update(task_id, true, EventKind::Progress, |t| {
         t.counts.translated = translated_n as u64;
@@ -783,7 +777,7 @@ pub async fn retranslate_segment(core: &Core, task_id: &str, index: usize) -> Re
     std::fs::write(&seg_file, serde_json::to_string(&segments).unwrap_or_default())
         .map_err(|e| format!("写入失败: {}", e))?;
     let task = core.manager.get(task_id).ok_or("任务不存在")?;
-    let _ = rewrite_outputs(core, &task, &segments);
+    rewrite_outputs(core, &task, &segments)?;
     let translated_n = segments.iter().filter(|s| seg_translated(s)).count();
     core.manager.update(task_id, true, EventKind::Progress, |t| {
         t.counts.translated = translated_n as u64;
@@ -1036,7 +1030,7 @@ fn persist_edited(core: &Core, task_id: &str, segments: &mut Vec<Value>) -> Resu
         serde_json::to_string(segments).map_err(|e| format!("序列化识别结果失败：{}", e))?;
     std::fs::write(&seg_file, json_text).map_err(|e| format!("写入识别结果失败：{}", e))?;
 
-    let (out_dir, outputs) = rewrite_outputs(core, &task, segments);
+    let (out_dir, outputs) = rewrite_outputs(core, &task, segments)?;
     let out_dir_s = out_dir.to_string_lossy().to_string();
     let n = segments.len();
     let translated_n = translated_count(segments);
