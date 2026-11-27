@@ -6,6 +6,11 @@ rem Release target: one x64 NSIS installer containing CPU and Vulkan transcripti
 rem with ffmpeg/ffprobe/yt-dlp deployed directly as NSIS resources (LZMA solid compression).
 rem Prerequisites: Rust MSVC, CMake, LLVM, Node.js, VS Build Tools and Vulkan SDK.
 if not defined ASMR_BUILD_ROOT set "ASMR_BUILD_ROOT=%~d0\asmr-build"
+if not defined VS_VCVARS (
+  for /f "usebackq delims=" %%I in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath 2^>nul`) do (
+    if exist "%%I\VC\Auxiliary\Build\vcvars64.bat" set "VS_VCVARS=%%I\VC\Auxiliary\Build\vcvars64.bat"
+  )
+)
 if not defined VS_VCVARS set "VS_VCVARS=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 if not defined VULKAN_SDK set "VULKAN_SDK=%USERPROFILE%\scoop\apps\vulkan\current"
 if not defined LIBCLANG_PATH set "LIBCLANG_PATH=C:\Program Files\LLVM\bin"
